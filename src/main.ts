@@ -1,4 +1,4 @@
-import { addIcon, Plugin } from "obsidian";
+import { addIcon, Notice, Plugin } from "obsidian";
 import { LOGO_ICON, LOGO_SVG } from "./logo";
 import { tr } from "./i18n";
 import { VIEW_TYPE } from "./constants";
@@ -14,6 +14,8 @@ import { migrateProjectRecords, normalizeProjects } from "./project-state";
 import { clamp } from "./visual";
 import { invalidateLiteratureIndex } from "./vault-note";
 import { ConnectedPapersView } from "./view";
+import { DiscoveryGraphView, DISCOVERY_VIEW } from "./discovery-view";
+import type { DiscoveryPayload } from "./discovery-graph";
 
 export default class ConnectedPapersPlugin extends Plugin {
 	settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS };
@@ -24,6 +26,14 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 		// Main-area tab. The graph pane is the product, not a sidebar card list.
 		this.registerView(VIEW_TYPE, (leaf) => new ConnectedPapersView(leaf, this));
+		this.registerView(DISCOVERY_VIEW, leaf => new DiscoveryGraphView(leaf));
+		this.addCommand({ id: "open-related-papers", name: tr("打开本地相关论文图谱", "Open local related-paper graph"), callback: () => { void this.openDiscovery(); } });
+		this.registerDomEvent(window, "research-connected-open-discovery", event => {
+			const detail = (event as CustomEvent<{ payload?: DiscoveryPayload; paper?: string; handled?: boolean }>).detail;
+			if (!detail) return;
+			detail.handled = true;
+			void this.openDiscovery(detail.payload, detail.paper).catch(error => new Notice(error instanceof Error ? error.message : "Could not open related papers"));
+		});
 
 		addIcon(LOGO_ICON, LOGO_SVG);
 
@@ -65,6 +75,16 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 	getSettings(): ConnectedPapersSettings {
 		return this.settings;
+	}
+
+	private async openDiscovery(payload?: DiscoveryPayload, paper?: string): Promise<void> {
+		const leaf = this.app.workspace.getLeavesOfType(DISCOVERY_VIEW)[0] ?? this.app.workspace.getLeaf("tab");
+		if (leaf.view.getViewType() !== DISCOVERY_VIEW) await leaf.setViewState({ type: DISCOVERY_VIEW, active: true });
+		await this.app.workspace.revealLeaf(leaf);
+		if (leaf.view instanceof DiscoveryGraphView) {
+			if (payload) leaf.view.showPayload(payload);
+			else if (paper) leaf.view.setSource(paper);
+		}
 	}
 
 	/** Note embeds call this to jump to the full graph pane on their seed. */

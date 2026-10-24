@@ -8,7 +8,7 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"verify": "node esbuild.config.mjs verify && node scripts/verify.cjs",
-		"test": "npm run lint && node scripts/verify-architecture.mjs && node scripts/verify-ui-contract.mjs && node esbuild.config.mjs verify && node scripts/verify.cjs --offline && node scripts/verify-plugin-state.mjs && node scripts/verify-feedback.mjs",
+		"test": "npm run lint && node scripts/verify-architecture.mjs && node scripts/verify-ui-contract.mjs && node esbuild.config.mjs verify && node scripts/verify.cjs --offline && node scripts/verify-plugin-state.mjs && node scripts/verify-feedback.mjs && node scripts/verify-discovery-graph.mjs",
 		"perf": "node esbuild.config.mjs perf && node scripts/perf.cjs",
 		"mmr-sweep": "node esbuild.config.mjs sweep && node scripts/mmr-sweep.cjs",
 		"preview": "node esbuild.config.mjs preview",

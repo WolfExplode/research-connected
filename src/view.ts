@@ -7,6 +7,7 @@ import { openExternal } from "./open-external";
 import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
 import type { ResearchProject } from "./project-state";
+import { requestLibraryBridge } from "./library-bridge";
 
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
@@ -54,6 +55,7 @@ export class ConnectedPapersView extends ItemView {
 
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
 		this.appHandle = mountGraphApp(this.contentEl, {
+			libraryBridge: requestLibraryBridge,
 			getSettings: () => this.host.getSettings(),
 			persistSettings: () => this.host.saveSettings(false),
 			getJson: obsidianGetJson,

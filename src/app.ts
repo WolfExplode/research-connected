@@ -6,6 +6,7 @@ import { emptyFilter, SIMILARITY_NOT_CITATION, type GraphFilter } from "./graph-
 import { createChromeIcon, mountBottomSheet, mountGraphChrome, registerPopover, type ExportKind, type GraphChrome, type GraphTab } from "./graph-chrome";
 import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintIdentitySources, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { paintPaperActions } from "./paper-actions";
+import { paintLibraryAvailability, type LibraryBridge } from "./library-bridge";
 import { literatureFilename, literatureMarkdown, orderedForExport, toBibTeX, toMarkdownTable, toYamlList } from "./export-graph";
 import {
 	EXPAND_CAP,
@@ -62,6 +63,7 @@ export interface GraphAppHandle {
 }
 
 export interface AppDeps {
+	libraryBridge?: () => LibraryBridge | null;
 	getSettings: () => ConnectedPapersSettings;
 	getJson: GetJson;
 	postJson?: (url: string, init: { headers: Record<string, string>; body: string }) => Promise<unknown>;
@@ -220,6 +222,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	listPanel.hidden = true;
 	const actionsBar = el(sidebar, "div", "cpo-actions-bar");
 	const map = new SimilarityMap(canvas, tooltip, stage);
+	map.libraryStatus = paper => deps.libraryBridge?.()?.read(paper) ?? null;
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, { onResize: () => map.resize() });
 	let mapFilter: GraphFilter = emptyFilter();
 	map.setKinds(mapFilter.kinds);
@@ -761,6 +764,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const year = paper.year === null ? tr("年份不详", "Year unknown") : String(paper.year);
 		sheet.setSummary(paper.title, tr(`${year} · 被引 ${formatCount(paper.citedByCount)}`, `${year} · cited ${formatCount(paper.citedByCount)} times`), { lang: paper.language });
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
+		const library = deps.libraryBridge?.();
+		if (library) paintLibraryAvailability(detail, paper, library, deps.openExternal);
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
 		const seedId = seedNode?.id ?? paper.id;
 		const project = deps.getSettings().researchProjects[seedId];
@@ -860,6 +865,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	map.onSelect = (paper) => { showDetail(paper); scheduleProjectSave(); };
+	const onLibraryChanged = (): void => {
+		if (disposed) return;
+		if (graph) deps.libraryBridge?.()?.prefetch?.(graph.nodes);
+		map.refreshLibraryStatus();
+		if (selectedPaper && tab === "graph") showDetail(selectedPaper);
+	};
+	window.addEventListener("research-connected-library-changed", onLibraryChanged);
 	map.onNodeMenu = (paper, x, y) => {
 		if (!paper || !graph) {
 			nodeMenu.hidden = true;
@@ -1148,6 +1160,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 		graph = next;
 		map.adoptGraph(next.nodes, next.edges, next.seedScore, nearId, reflow);
+		deps.libraryBridge?.()?.prefetch?.(next.nodes);
 		graphKey.setStats(next.nodes, next.edges);
 		graphKey.paintColor(layoutMode);
 		const years = next.nodes.map((node) => node.year).filter((year): year is number => year !== null);
@@ -1326,6 +1339,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		saveViewButton.disabled = !seed || !viewNameInput.value.trim();
 		showDetail(seed);
 		map.setGraph(next.nodes, next.edges, next.seedScore);
+		deps.libraryBridge?.()?.prefetch?.(next.nodes);
 		graphKey.setStats(next.nodes, next.edges);
 		graphKey.paintColor(layoutMode);
 		// setGraph 不再重置布局；把轨道按钮当前选中的布局回灌给画布。
@@ -1835,6 +1849,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			window.removeEventListener("research-connected-settings", onSettings);
 			window.removeEventListener("research-connected-project", onProject);
 			window.removeEventListener("research-connected-theme", onTheme);
+			window.removeEventListener("research-connected-library-changed", onLibraryChanged);
 			map.destroy();
 			root.replaceChildren();
 			root.classList.remove("cpo-root", "is-narrow");

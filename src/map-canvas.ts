@@ -7,6 +7,7 @@ import { placeLayout, type ColorMode, type LayoutMode } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
+import type { LibraryAvailability } from "./library-bridge";
 import { citationRadius, clamp, classicBreath, fitViewScale, yearColor, yearNormalizedCitations } from "./visual";
 
 interface DrawNode extends PaperNode {
@@ -29,6 +30,9 @@ type Drag =
  * Wheel zoom eases toward its target; pan and pinch stay immediate.
  */
 export class SimilarityMap {
+	libraryStatus: ((paper: PaperNode) => LibraryAvailability | null) | null = null;
+
+	refreshLibraryStatus(): void { this.draw(); }
 	onSelect: ((paper: PaperNode | null) => void) | null = null;
 	onEdgeSelect: ((edge: GraphEdge) => void) | null = null;
 	onNodeMenu: ((paper: PaperNode | null, x: number, y: number) => void) | null = null;
@@ -1018,6 +1022,23 @@ export class SimilarityMap {
 			ctx.lineWidth = 2;
 			ctx.strokeStyle = this.graphNodeFocused;
 			ctx.stroke();
+		}
+		const library = this.libraryStatus?.(node);
+		if (library) {
+			ctx.save();
+			ctx.font = "bold 9px sans-serif";
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			const badge = (dx: number, dy: number, text: string, color: string): void => {
+				ctx.beginPath(); ctx.arc(x + dx, y + dy, 6, 0, Math.PI * 2);
+				ctx.fillStyle = color; ctx.fill();
+				ctx.fillStyle = "#ffffff"; ctx.fillText(text, x + dx, y + dy);
+			};
+			const state = library.local.state;
+			badge(radius, -radius, state === "held" ? "H" : state === "note-only" ? "N" : state === "ambiguous" ? "?" : "−", state === "held" ? "#197348" : state === "note-only" ? "#8f6100" : "#59616c");
+			if (library.providers.oa?.state === "available") badge(-radius, radius, "O", "#197348");
+			if (library.providers.scihub?.state === "available") badge(radius, radius, "S", "#345e9e");
+			ctx.restore();
 		}
 		if (dimmed) ctx.globalAlpha = 1;
 	}

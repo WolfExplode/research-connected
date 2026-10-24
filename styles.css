@@ -1,7 +1,22 @@
-.workspace-leaf-content[data-type="research-connected"] .view-content {
+.workspace-leaf-content[data-type="research-connected"] .view-content,
+.workspace-leaf-content[data-type="research-connected-discovery"] .view-content {
 	padding: 0;
 	overflow: hidden;
 	height: 100%;
+}
+
+.cpo-root.cpo-discovery-root { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+.cpo-discovery-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; padding: 12px; flex: 0 0 auto; }
+.cpo-discovery-controls label { display: flex; flex-direction: column; gap: 4px; min-width: 130px; max-width: 100%; }
+.cpo-discovery-controls input, .cpo-discovery-controls select { max-width: 100%; }
+.cpo-discovery-status { flex: 0 0 auto; margin: 0; padding: 0 12px 10px; color: var(--text-muted); overflow-wrap: anywhere; }
+.cpo-discovery-body { flex: 1 1 auto; min-height: 0; display: flex; overflow: hidden; }
+.cpo-discovery-body > .cpo-stage { flex: 1 1 auto; min-width: 0; min-height: 240px; }
+.cpo-discovery-detail { flex: 0 0 300px; max-width: 40%; padding: 12px; overflow: auto; overflow-wrap: anywhere; border-left: 1px solid var(--background-modifier-border); }
+.cpo-discovery-detail button { white-space: normal; height: auto; min-height: 28px; margin: 3px; }
+@media (max-width: 779px) {
+	.cpo-discovery-body { flex-direction: column; overflow: auto; }
+	.cpo-discovery-detail { flex: 0 0 auto; max-width: 100%; max-height: 45%; border-left: 0; border-top: 1px solid var(--background-modifier-border); }
 }
 
 .cpo-host {

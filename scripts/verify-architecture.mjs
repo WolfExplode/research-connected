@@ -9,13 +9,13 @@ const domain = new Set([
 	"aggregates.ts", "communities.ts", "community-regions.ts",
 	"diversity.ts", "doi-path.ts", "graph-filter.ts", "labels.ts", "layout.ts",
 	"layout-modes.ts", "relation.ts", "similarity.ts", "text-similarity.ts",
-	"topic-similarity.ts", "types.ts",
+	"topic-similarity.ts", "types.ts", "discovery-graph.ts",
 ]);
 const adapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts", "vault-note.ts"]);
 const ui = new Set([
 	"app.ts", "detail-cards.ts", "embed-block.ts", "embed-mount.ts", "filter-controls.ts",
 	"graph-chrome.ts", "main.ts", "map-canvas.ts", "settings.ts",
-	"sidebar-resize.ts", "view.ts", "visual.ts",
+	"sidebar-resize.ts", "view.ts", "visual.ts", "discovery-view.ts", "library-bridge.ts",
 ]);
 const httpAdapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts"]);
 const importPattern = /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g;
