@@ -9,6 +9,7 @@ import {
 } from "../src/citation-evidence";
 import { doisFromOpenCitation, SemanticScholarClient } from "../src/citation-sources";
 import { SimilarityMap } from "../src/map-canvas";
+import { similarityRadius } from "../src/layout-modes";
 import { buildNarrativeEvidence, validateNarrative } from "../src/narrative";
 import { summarizeWithLlmPost } from "../src/llm";
 import type { SimilarityGraph } from "../src/neighborhood";
@@ -170,7 +171,8 @@ export async function verifyEvidence(): Promise<void> {
 	};
 	const canvas = {
 		addEventListener() {}, removeEventListener() {}, style: {}, width: 0, height: 0,
-		getContext: () => null, getBoundingClientRect: () => ({ width: 800, height: 600 }),
+		focus() {}, setPointerCapture() {}, classList: { toggle() {} },
+		getContext: () => null, getBoundingClientRect: () => ({ width: 800, height: 600, left: 0, top: 0 }),
 	} as unknown as HTMLCanvasElement;
 	const tooltip = { hidden: true, textContent: "", style: {} } as unknown as HTMLElement;
 	const stage = { getBoundingClientRect: () => ({ width: 800, height: 600 }) } as unknown as HTMLElement;
@@ -200,4 +202,34 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(map.hasAdjusted(), true, "enrichment must not clear the user's pan/zoom flag");
 	assert.equal(internals.edges, mapGraph.edges, "enriched edges are swapped in");
 	assert.equal(internals.communities.get("W1"), internals.communities.get("W3"), "communities refresh with new edges");
+
+	// Real pointer handlers must preserve score-defined radii, including after graph edits.
+	const scores = new Map([[seed.id, 1], [prior.id, 0.8], [later.id, 0]]);
+	map.setGraph([seed, prior, later], mapGraph.edges, scores);
+	map.setLayout("radial");
+	map.setViewState({ zoom: 1, centerX: 0, centerY: 0, selectedId: seed.id });
+	const orbit = map as unknown as {
+		nodes: Array<PaperNode & { x: number; y: number }>;
+		onPointerDown(event: PointerEvent): void;
+		onPointerMove(event: PointerEvent): void;
+		onPointerUp(event: PointerEvent): void;
+	};
+	const dragged = orbit.nodes.find(node => node.id === prior.id)!;
+	const pointer = (x: number, y: number) => ({ pointerId: 1, button: 0, clientX: x + 400, clientY: y + 300 }) as PointerEvent;
+	orbit.onPointerDown(pointer(dragged.x, dragged.y));
+	orbit.onPointerMove(pointer(-500, 700));
+	assert.ok(Math.abs(Math.hypot(dragged.x, dragged.y) - similarityRadius(0.8)!) < 1e-9, "drag changes only the angle");
+	orbit.onPointerMove(pointer(0, 0));
+	assert.ok(Math.abs(Math.hypot(dragged.x, dragged.y) - similarityRadius(0.8)!) < 1e-9, "drag through the center retains the orbit");
+	orbit.onPointerUp(pointer(0, 0));
+	assert.equal(scores.get(prior.id), 0.8, "drag never edits the underlying score");
+	assert.deepEqual(orbit.nodes.filter(node => node.isSeed).map(node => [node.x, node.y]), [[0, 0]], "comparison paper stays at the origin");
+	const changedScores = new Map([[prior.id, 0.9]]);
+	map.adoptGraph([seed, prior, later], [], changedScores, prior.id);
+	const updated = orbit.nodes.find(node => node.id === prior.id)!;
+	assert.ok(Math.abs(Math.hypot(updated.x, updated.y) - similarityRadius(0.9)!) < 1e-9, "graph updates project preserved angles onto updated score orbits");
+	assert.ok(orbit.nodes.find(node => node.id === later.id)!.x >= 360, "missing scores go in a separate area");
+	assert.equal(similarityRadius(0), 278, "zero is a valid low-similarity score");
+	assert.equal(similarityRadius(NaN), null, "nonfinite scores are unavailable");
+	map.destroy();
 }

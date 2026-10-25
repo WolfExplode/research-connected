@@ -1,4 +1,5 @@
 import { tr } from "./i18n";
+import { questionLinks } from "./question-workspace";
 import { CitationEvidenceStore, type CitationEvidence } from "./citation-evidence";
 import { shortId } from "./paper";
 import { normalizeWorkGraph } from "./graph-edit";
@@ -78,6 +79,8 @@ export interface DeepDiveBatch {
 
 export interface ResearchProject {
 	version: 1;
+	/** Explicit question memberships; old paper projects remain unassigned. */
+	questionPaths?: string[];
 	seedId: string;
 	name: string;
 	updatedAt: number;
@@ -338,6 +341,7 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 		if (project.version !== 1 || (snapshot && snapshot.nodes.length > 300) || (!snapshot && Object.keys(paperStates).length === 0 && !project.deepDives?.length)) continue;
 		out[seedId.toUpperCase()] = {
 			version: 1,
+			questionPaths: questionLinks(project.questionPaths),
 			seedId: seedId.toUpperCase(),
 			name: typeof project.name === "string" ? project.name.slice(0, 120) : snapshot?.nodes.find((node) => node.isSeed)?.title || seedId,
 			updatedAt: Number.isFinite(project.updatedAt) ? Number(project.updatedAt) : Number(project.snapshot && project.snapshot.savedAt) || 0,

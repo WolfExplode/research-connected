@@ -167,6 +167,7 @@ if (prod) {
 	if (!(pluginModule.exports.prototype instanceof Plugin)) {
 		throw new Error("main.js export does not extend Plugin");
 	}
+	await context.dispose();
 	process.exit(0);
 } else {
 	await context.watch();

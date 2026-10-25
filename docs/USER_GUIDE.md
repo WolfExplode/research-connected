@@ -74,7 +74,7 @@ Restricted mode must be off, or Obsidian will not load community plugins.
    - or a title. Title search shows up to 8 hits; click one to make it the seed.
 3. Press **Build** to load the map.
 4. The seed sits in the middle with a double ring and a halo. Other papers are placed by similarity:
-   - in **Planar**, node colors identify detected citation-structure groups; in **Timeline** and **Radial**, color shows topic similarity to the seed
+   - in **Planar**, node colors identify detected citation-structure groups; in **Timeline** and **Similarity**, color shows topic similarity to the seed
    - node size follows year-normalized citation counts; classics in the sampled graph receive a subtle glow
    - line weight follows the relation score
 5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / Fit to view** zoom and fit the map. On touch screens, pinch with two fingers to zoom. With the canvas focused, the arrow keys pan, `+` / `-` zoom, and `0` or `F` fits.
@@ -120,7 +120,7 @@ depth: 1
 | `yearFrom:` / `yearTo:` | no | Inclusive year range for the other papers. The seed stays. If both are set and reversed, they are swapped. |
 | `language:` / `type:` / `concept:` | no | Preset filters. They apply only when OpenAlex included that field (`language`, `type`, `concepts`). |
 | `minCoCite:` / `minShared:` | no | Hide co-citation edges below that count, and coupling edges below that shared-reference count. Default 1. |
-| `layout:` | no | `temporal` (default; year on X), `radial` (distance from seed = similarity), or `force2d` (Planar force layout grouped by detected citation communities). Legacy `kumu` / `community` and `force3d` values map to `force2d`. |
+| `layout:` | no | `temporal` (default; year on X), `radial` (Similarity view; distance from seed = similarity), or `force2d` (Planar force layout grouped by detected citation communities). Legacy `kumu` / `community` and `force3d` values map to `force2d`. |
 | `color:` | no | `topic` (default outside Planar), `community` (default in Planar), `graph` (citation-count ramp), or `year`. |
 
 `full` widens the block by Obsidian’s `--file-margins` (no effect when that variable is 0, as in the dev preview). Title search is not available in the fence. Use the command pane for that. Lines starting with `#` are comments.
@@ -135,7 +135,7 @@ Citation edges are arrows (A cites B; mutual cites get both heads). Co-citation 
 
 After the graph loads, language, work type, and concept filters appear only when at least one paper has that OpenAlex field. Node size is normalized by publication year and citation count. Author–year labels stay.
 
-The layout modes are **Planar**, **Timeline**, and **Radial**. **Timeline** maps publication year linearly from left to right; unknown-year works sit in a separate left gutter. Vertical position follows log citation count, with small offsets to separate overlaps. **Radial** places papers closer to the seed when their sampled structural similarity score is higher. **Planar** uses a force layout and groups nodes by communities detected from the sampled citation/similarity graph; node color denotes that algorithmic grouping, not a definitive scholarly school. Outside Planar, node color shows topic similarity to the seed; missing topic metadata is gray. Node size uses citations normalized by publication year. The year scrubber filters papers after the chosen year; **Play** advances one year at a time.
+The layout modes are **Planar**, **Timeline**, and **Similarity**. **Timeline** maps publication year linearly from left to right; unknown-year works sit in a separate left gutter. Vertical position follows log citation count, with small offsets to separate overlaps. **Similarity** places papers closer to the seed when their overall similarity score is higher. The comparison paper stays fixed at the center. Dragging another paper rotates it around its score-defined orbit without changing its distance or score. Subtle guide rings indicate more versus less similarity; missing scores sit separately under “Insufficient data.” Only the center and active papers are labeled, and the active paper has a simple guide line to the center. Select a paper to inspect score details or choose “Compare against this paper” to rebuild around it. Citation edges remain available in Planar and Timeline. Similarity is unavailable for ASReview screening and PDF retrieval, whose ranks are not similarity scores. **Planar** uses a force layout and groups nodes by communities detected from the sampled citation/similarity graph; node color denotes that algorithmic grouping, not a definitive scholarly school. Outside Planar, node color shows topic similarity to the seed; missing topic metadata is gray. Node size uses citations normalized by publication year. The year scrubber filters papers after the chosen year; **Play** advances one year at a time.
 
 **Prior work** lists papers often cited by the current subgraph (how many visible papers’ reference lists include them). **Later work** lists papers that often cite the current subgraph (how many visible papers appear in their reference list). Both are lists, not new edge types. A count below 2 is left out.
 

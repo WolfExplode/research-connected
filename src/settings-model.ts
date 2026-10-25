@@ -35,6 +35,7 @@ export interface ConnectedPapersSettings {
 	/** Deep-dug paper ids kept per seed OpenAlex id, restored on rebuild. */
 	graftedBySeed: Record<string, string[]>;
 	researchProjects: Record<string, ResearchProject>;
+	activeQuestion?: string;
 }
 
 export const DEFAULT_SETTINGS: ConnectedPapersSettings = {

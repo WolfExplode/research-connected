@@ -9,7 +9,7 @@ const domain = new Set([
 	"aggregates.ts", "communities.ts", "community-regions.ts",
 	"diversity.ts", "doi-path.ts", "graph-filter.ts", "labels.ts", "layout.ts",
 	"layout-modes.ts", "relation.ts", "similarity.ts", "text-similarity.ts",
-	"topic-similarity.ts", "types.ts", "discovery-graph.ts",
+	"topic-similarity.ts", "types.ts", "discovery-graph.ts", "question-workspace.ts",
 ]);
 const adapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts", "vault-note.ts"]);
 const ui = new Set([

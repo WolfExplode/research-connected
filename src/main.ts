@@ -29,10 +29,10 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.registerView(DISCOVERY_VIEW, leaf => new DiscoveryGraphView(leaf));
 		this.addCommand({ id: "open-related-papers", name: tr("打开本地相关论文图谱", "Open local related-paper graph"), callback: () => { void this.openDiscovery(); } });
 		this.registerDomEvent(window, "research-connected-open-discovery", event => {
-			const detail = (event as CustomEvent<{ payload?: DiscoveryPayload; paper?: string; handled?: boolean }>).detail;
+			const detail = event.detail;
 			if (!detail) return;
 			detail.handled = true;
-			void this.openDiscovery(detail.payload, detail.paper).catch(error => new Notice(error instanceof Error ? error.message : "Could not open related papers"));
+			void this.openDiscovery(detail.payload, detail.paper, detail.question, detail.mode).catch(error => new Notice(error instanceof Error ? error.message : "Could not open related papers"));
 		});
 
 		addIcon(LOGO_ICON, LOGO_SVG);
@@ -77,14 +77,11 @@ export default class ConnectedPapersPlugin extends Plugin {
 		return this.settings;
 	}
 
-	private async openDiscovery(payload?: DiscoveryPayload, paper?: string): Promise<void> {
-		const leaf = this.app.workspace.getLeavesOfType(DISCOVERY_VIEW)[0] ?? this.app.workspace.getLeaf("tab");
-		if (leaf.view.getViewType() !== DISCOVERY_VIEW) await leaf.setViewState({ type: DISCOVERY_VIEW, active: true });
-		await this.app.workspace.revealLeaf(leaf);
-		if (leaf.view instanceof DiscoveryGraphView) {
-			if (payload) leaf.view.showPayload(payload);
-			else if (paper) leaf.view.setSource(paper);
-		}
+	private async openDiscovery(payload?: DiscoveryPayload, paper?: string, question?: string, mode?: "rank" | "search"): Promise<void> {
+		await this.openView();
+		const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+		if (view instanceof ConnectedPapersView) view.openDiscovery({ payload, paper, question, mode });
+		for (const leaf of this.app.workspace.getLeavesOfType(DISCOVERY_VIEW)) leaf.detach();
 	}
 
 	/** Note embeds call this to jump to the full graph pane on their seed. */

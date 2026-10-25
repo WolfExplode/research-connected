@@ -1,5 +1,15 @@
 # Optional library integration
 
+The main workspace selects question notes from `discovery.context().questions`. Saved citation
+graphs carry explicit `questionPaths` memberships; old graphs start unassigned, and a graph can
+be reused by several questions. Its snapshot, views and saved/excluded papers remain shared.
+`activeQuestion` remembers the selected note path. The main **Explore** selector switches between
+Citation network, Rank papers, Search PDFs and Similar local papers. All use the same question
+selector, canvas, layout controls and paper details panel. Only method-specific inputs are shown.
+Changing method retains the citation graph and caches local results for the session; late tool
+responses are ignored after a context switch or disposal. Local results never enter saved citation
+snapshots, and citation-editing controls are hidden while displaying them.
+
 The local build accepts a version 1 library bridge supplied by another Obsidian plugin. The graph
 continues to work when no bridge is installed. Network requests, holdings and credentials belong
 to the supplying plugin; they are not added to Research Connected settings or saved graph snapshots.
@@ -41,8 +51,9 @@ request/result DTOs. Requests support ASReview `rank`/`similar`, and PaperQA2 se
 settings remain in the host plugin. Missing dependencies or training labels surface as errors.
 
 `research-connected-open-discovery` accepts `detail.payload` (existing results) or `detail.paper`
-(preselect a source note); the plugin sets `detail.handled` synchronously and opens the related-paper
-workspace. Results use exact local note/file identities (`local:<vault-relative path>`). A host
+(preselect a source note), or `{ question, mode: "rank" | "search" }`. The plugin sets
+`detail.handled` synchronously and opens the main Research Connected workflow. Existing command
+IDs and old discovery tabs redirect there. Results use exact local note/file identities (`local:<vault-relative path>`). A host
 recognizes these with `matchedBy: file`, including DOI-less papers. The workspace has radial,
 planar and timeline layouts, local holdings badges and availability actions.
 
@@ -60,7 +71,7 @@ are deliberately not persisted with graph projects.
 ## Background open-access checks
 
 An optional `bridge.prefetch(papers)` schedules OA checks for displayed graph nodes. Both citation
-and discovery views call it when their graph changes, and details panels call it for the selected
+and local exploration modes call it when their graph changes, and details panels call it for the selected
 paper. `read()` stays synchronous and never starts network work. The host owns automatic-check
 preferences, deduplication, batching, cache freshness, retries and worker lifetime. This extension
 never triggers Sci-Hub requests.

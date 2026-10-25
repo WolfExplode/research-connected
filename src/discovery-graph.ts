@@ -58,7 +58,8 @@ export function buildDiscoveryGraph(payload: DiscoveryPayload, limit = 30): {
 	const source = payload.mode === "similar" ? payload.source : undefined;
 	const sourcePath = vaultPath(source?.note);
 	const anchorId = sourcePath ? `local:${sourcePath}` : "discovery:query";
-	const title = payload.query || payload.question || "Related papers";
+	const questionTitle = payload.question?.split("/").pop()?.replace(/\.md$/, "");
+	const title = payload.query && payload.query !== payload.question ? payload.query : questionTitle || "Related papers";
 	nodes.push(makeNode(source || { title }, anchorId, true));
 	if (!sourcePath) nodes[0]!.authors = payload.engine === "paperqa" ? "PaperQA2" : "ASReview";
 	if (source && sourcePath) rows.set(anchorId, source);

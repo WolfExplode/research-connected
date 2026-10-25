@@ -16,6 +16,7 @@ export interface GraphHost {
 
 export class ConnectedPapersView extends ItemView {
 	private appHandle: GraphAppHandle | null = null;
+	private headerStatus: HTMLElement | null = null;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -53,7 +54,18 @@ export class ConnectedPapersView extends ItemView {
 		this.appHandle?.openDoiPathSearch();
 	}
 
+	openDiscovery(options: Parameters<GraphAppHandle["openDiscovery"]>[0] = {}): void {
+		this.appHandle?.openDiscovery(options);
+	}
+
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
+		this.headerStatus?.remove();
+		const leaf = this.contentEl.closest<HTMLElement>(".workspace-leaf-content");
+		const header = leaf?.querySelector<HTMLElement>(".view-header");
+		const headerStatus = header?.createDiv({ cls: "cpo-view-status" });
+		const actions = header?.querySelector<HTMLElement>(".view-actions");
+		if (header && headerStatus && actions) header.insertBefore(headerStatus, actions);
+		this.headerStatus = headerStatus ?? null;
 		this.appHandle = mountGraphApp(this.contentEl, {
 			libraryBridge: requestLibraryBridge,
 			getSettings: () => this.host.getSettings(),
@@ -68,6 +80,7 @@ export class ConnectedPapersView extends ItemView {
 			rememberLiteratureNote,
 			stagePaper: async () => { await this.host.saveSettings(false); },
 			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
+			statusHost: this.headerStatus ?? undefined,
 		saveProject: async (project: ResearchProject) => {
 			this.host.getSettings().researchProjects[project.seedId] = project;
 			await this.host.saveSettings(false);
@@ -79,6 +92,8 @@ export class ConnectedPapersView extends ItemView {
 	async onClose(): Promise<void> {
 		this.appHandle?.destroy();
 		this.appHandle = null;
+		this.headerStatus?.remove();
+		this.headerStatus = null;
 		this.contentEl.empty();
 		this.contentEl.removeClass("cpo-host");
 	}

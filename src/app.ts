@@ -1,4 +1,6 @@
 import { paperHasId, paperRecords, resolveWorkQuery } from "./work-identity";
+import { graphsForQuestion, linkGraphToQuestion, questionPath } from "./question-workspace";
+import { buildDiscoveryGraph, vaultPath, type DiscoveryPayload, type DiscoveryRequest } from "./discovery-graph";
 import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks } from "./aggregates";
 import { mountGraphKey } from "./filter-controls";
@@ -58,6 +60,7 @@ import { matchingSeedProjects, projectExcludedPapers, projectStagedPapers, ackno
 
 export interface GraphAppHandle {
 	destroy(): void;
+	openDiscovery(options?: { payload?: DiscoveryPayload; paper?: string; question?: string; mode?: "rank" | "search" }): void;
 	/** Command-palette DOI path search over already-fetched reference lists. */
 	openDoiPathSearch(): void;
 }
@@ -78,6 +81,8 @@ export interface AppDeps {
 	persistSettings?: () => Promise<void> | void;
 	loadSavedProject?: () => ResearchProject | null;
 	saveProject?: (project: ResearchProject) => Promise<void> | void;
+	/** Optional native view-header slot for the live graph status. */
+	statusHost?: HTMLElement;
 	initialDoi?: string;
 	/** Seed to build immediately; wins over initialDoi when both are set. */
 	initialTarget?: { kind: "doi" | "openalex"; value: string };
@@ -105,11 +110,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	root.replaceChildren();
 
 	const bar = el(root, "header", "cpo-bar");
-	const topLine = el(bar, "div", "cpo-topline");
-	const brand = el(topLine, "div", "cpo-brand");
-	el(brand, "span", "cpo-brand-mark", "R");
-	el(brand, "strong", undefined, "Research Connected");
-	const form = el(topLine, "form", "cpo-form");
+	const projectTools = el(bar, "div", "cpo-project-tools");
+	const form = el(projectTools, "form", "cpo-form");
 	const input = el(form, "input", "cpo-input");
 	input.type = "text";
 	input.placeholder = tr("DOI、OpenAlex ID 或论文标题", "DOI, OpenAlex ID, or paper title");
@@ -118,14 +120,81 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	input.setAttribute("aria-label", tr("种子论文", "Seed paper"));
 	const submit = el(form, "button", "cpo-primary", tr("构建", "Build"));
 	submit.type = "submit";
-	const projectTools = el(bar, "div", "cpo-project-tools");
-	const projectGroup = el(projectTools, "div", "cpo-project-group");
-	const projectLabel = el(projectGroup, "span", "cpo-project-label", tr("项目", "Project"));
-	projectLabel.prepend(createChromeIcon("project"));
+	const workspaceControls = el(projectTools, "div", "cpo-workspace-controls");
+	const workspaceToggles = el(workspaceControls, "div", "cpo-workspace-toggles");
+	workspaceToggles.setAttribute("role", "toolbar");
+	workspaceToggles.setAttribute("aria-label", tr("工作区菜单", "Workspace menus"));
+	const questionToggle = el(workspaceToggles, "button", "cpo-workspace-toggle");
+	questionToggle.type = "button";
+	questionToggle.title = tr("研究问题", "Question");
+	questionToggle.setAttribute("aria-label", tr("研究问题", "Question"));
+	questionToggle.setAttribute("aria-expanded", "false");
+	questionToggle.append(createChromeIcon("note"));
+	const graphToggle = el(workspaceToggles, "button", "cpo-workspace-toggle");
+	graphToggle.type = "button";
+	graphToggle.title = tr("引用图谱", "Citation graph");
+	graphToggle.setAttribute("aria-label", tr("引用图谱", "Citation graph"));
+	graphToggle.setAttribute("aria-expanded", "false");
+	graphToggle.append(createChromeIcon("project"));
+	const questionGroup = el(workspaceControls, "div", "cpo-workspace-menu cpo-project-group cpo-question-group");
+	questionGroup.hidden = true;
+	const questionSelect = el(questionGroup, "select", "cpo-project-select cpo-question-select");
+	questionSelect.setAttribute("aria-label", "Research question");
+	let activeQuestion = questionPath(deps.getSettings().activeQuestion) ?? "";
+	const questionTools = el(questionGroup, "div", "cpo-question-actions");
+	const questionAction = (text: string, action: () => void): HTMLButtonElement => {
+		const button = el(questionTools, "button", "cpo-ghost", text); button.type = "button";
+		button.addEventListener("click", action); return button;
+	};
+	const openQuestion = questionAction(tr("打开问题", "Open question"), () => deps.libraryBridge?.()?.open(activeQuestion));
+	const exploreTools = el(projectTools, "div", "cpo-explore-tools");
+	projectTools.insertBefore(exploreTools, workspaceControls);
+	projectTools.insertBefore(form, workspaceControls);
+	const method = el(exploreTools, "select", "cpo-explore-method");
+	method.setAttribute("aria-label", tr("探索方式", "Explore method"));
+	for (const [value, text] of [["citation", tr("引用网络", "Citation network")], ["rank", tr("论文筛选 · ASReview", "Rank papers · ASReview")], ["search", tr("搜索 PDF · PaperQA2", "Search PDFs · PaperQA2")], ["similar", tr("本地相似论文", "Similar local papers")]]) method.append(createEl("option", { value, text }));
+	const sourceLabel = el(exploreTools, "label", "cpo-explore-field cpo-explore-source", tr("来源论文", "Source paper"));
+	const sourcePaper = el(sourceLabel, "input"); sourcePaper.setAttribute("aria-label", "Local source paper");
+	const choices = el(sourceLabel, "datalist"); choices.id = `cpo-source-${Math.random().toString(36).slice(2)}`; sourcePaper.setAttribute("list", choices.id);
+	const sourcePaperPaths = new Map<string, string>();
+	const sourcePaperLabels = new Map<string, string>();
+	for (const paper of deps.libraryBridge?.()?.discovery?.context().papers ?? []) {
+		const label = paper.path.split("/").pop()?.replace(/\.md$/i, "").trim() || paper.title;
+		sourcePaperPaths.set(label, paper.path);
+		sourcePaperLabels.set(paper.path, label);
+		choices.append(createEl("option", { value: label }));
+	}
+	const sourcePaperPath = (): string => sourcePaperPaths.get(sourcePaper.value.trim()) ?? sourcePaper.value.trim();
+	const pdfLabel = el(exploreTools, "label", "cpo-explore-field cpo-explore-query");
+	const pdfQuery = el(pdfLabel, "input"); pdfQuery.type = "search"; pdfQuery.placeholder = tr("全文查询", "PDF query"); pdfQuery.setAttribute("aria-label", tr("全文查询", "PDF query"));
+	const limitLabel = el(exploreTools, "label", "cpo-explore-field");
+	const discoveryLimit = el(limitLabel, "select"); discoveryLimit.setAttribute("aria-label", "Discovery paper limit");
+	for (const limit of [30, 10, 50, 100]) discoveryLimit.append(createEl("option", { value: String(limit), text: String(limit) }));
+	const runDiscovery = el(exploreTools, "button", "cpo-primary", tr("筛选论文", "Rank papers")); runDiscovery.type = "button";
+	const indexPdfs = el(exploreTools, "button", "cpo-ghost", tr("索引前 12 篇 PDF", "Index top 12 PDFs")); indexPdfs.type = "button";
+	indexPdfs.classList.add("cpo-index-pdfs");
+	indexPdfs.title = tr("索引前 12 篇 PDF", "Index top 12 PDFs");
+	indexPdfs.setAttribute("aria-label", indexPdfs.title);
+	indexPdfs.replaceChildren(createChromeIcon("refresh"));
+	const projectGroup = el(workspaceControls, "div", "cpo-workspace-menu cpo-project-group");
+	projectGroup.hidden = true;
+	const menuId = `cpo-workspace-${Math.random().toString(36).slice(2)}`;
+	questionGroup.id = `${menuId}-question`;
+	projectGroup.id = `${menuId}-graph`;
+	questionToggle.setAttribute("aria-controls", questionGroup.id);
+	graphToggle.setAttribute("aria-controls", projectGroup.id);
+	workspaceControls.addEventListener("keydown", (event) => {
+		if (event.key !== "Escape" || (questionGroup.hidden && projectGroup.hidden)) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const toggle = questionGroup.hidden ? graphToggle : questionToggle;
+		setWorkspaceMenu(null);
+		toggle.focus();
+	});
 	const projectSelect = el(projectGroup, "select", "cpo-project-select");
-	projectSelect.setAttribute("aria-label", tr("研究项目", "Research project"));
-	projectSelect.title = tr("切换研究项目", "Switch research project");
-	const viewGroup = el(projectTools, "div", "cpo-project-group cpo-view-group");
+	projectSelect.setAttribute("aria-label", tr("引用图谱", "Citation graph"));
+	projectSelect.title = tr("选择此问题的图谱，或关联已有图谱", "Choose a graph for this question, or link an existing graph");
+	const viewGroup = el(projectGroup, "div", "cpo-project-group cpo-view-group");
 	const viewLabel = el(viewGroup, "span", "cpo-project-label", tr("视图", "View"));
 	viewLabel.prepend(createChromeIcon("views"));
 	const viewSelect = el(viewGroup, "select", "cpo-project-select cpo-view-select");
@@ -154,20 +223,27 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	renameProjectButton.disabled = true;
 	const libraryButton = el(projectGroup, "button", "cpo-ghost cpo-library-open");
 	libraryButton.type = "button";
-	libraryButton.append(createChromeIcon("bookmark"), document.createTextNode(tr("清单", "Library")));
+	libraryButton.append(createChromeIcon("bookmark"), document.createTextNode(tr("已保存论文", "Saved papers")));
 	libraryButton.title = tr("暂存与排除", "Saved and excluded papers");
-	projectTools.append(projectGroup, viewGroup);
+	const setWorkspaceMenu = (menu: "question" | "graph" | null): void => {
+		const showQuestion = menu === "question";
+		const showGraph = menu === "graph";
+		questionGroup.hidden = !showQuestion;
+		projectGroup.hidden = !showGraph;
+		questionToggle.classList.toggle("is-active", showQuestion);
+		graphToggle.classList.toggle("is-active", showGraph);
+		questionToggle.setAttribute("aria-expanded", String(showQuestion));
+		graphToggle.setAttribute("aria-expanded", String(showGraph));
+	};
+	questionToggle.addEventListener("click", () => setWorkspaceMenu(questionGroup.hidden ? "question" : null));
+	graphToggle.addEventListener("click", () => setWorkspaceMenu(projectGroup.hidden ? "graph" : null));
 
 	const status = createEl("p");
 	status.className = "cpo-status";
 	status.textContent = tr("从一篇种子论文开始。", "Start with a seed paper.");
 	status.setAttribute("role", "status");
-	const seedSummary = el(root, "div", "cpo-seed-summary");
-	seedSummary.hidden = true;
-	el(seedSummary, "span", "cpo-seed-mark", "");
-	const seedTitle = el(seedSummary, "strong", "cpo-seed-title");
-	const seedMeta = el(seedSummary, "span", "cpo-seed-meta");
-	topLine.append(seedSummary);
+	const statusIsExternal = Boolean(deps.statusHost);
+	if (deps.statusHost) deps.statusHost.replaceChildren(status);
 	const results = el(bar, "div", "cpo-results");
 	results.hidden = true;
 
@@ -178,12 +254,19 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const body = el(root, "div", "cpo-body");
 	body.classList.add("is-rail-collapsed");
 	const statusBar = el(root, "footer", "cpo-statusbar");
-	statusBar.append(status);
+	statusBar.hidden = statusIsExternal;
+	if (!statusIsExternal) statusBar.append(status);
 	const undoButton = el(statusBar, "button", "cpo-text-btn cpo-undo", tr("撤销", "Undo"));
 	undoButton.type = "button";
 	undoButton.hidden = true;
 	undoButton.disabled = true;
-	const rail = el(body, "aside", "cpo-rail");
+	undoButton.title = tr("撤销（Ctrl+Z）", "Undo (Ctrl+Z)");
+	const redoButton = el(statusBar, "button", "cpo-text-btn cpo-undo", tr("重做", "Redo"));
+	redoButton.type = "button";
+	redoButton.hidden = true;
+	redoButton.disabled = true;
+	redoButton.title = tr("重做（Ctrl+Shift+Z）", "Redo (Ctrl+Shift+Z)");
+	const rail =el(body, "aside", "cpo-rail");
 	const layoutHost = el(rail, "div", "cpo-rail-layouts");
 	const scrubHost = el(rail, "div", "cpo-rail-scrub");
 	const railToggle = el(rail, "button", "cpo-panel-toggle is-left", "›");
@@ -222,21 +305,42 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	listPanel.hidden = true;
 	const actionsBar = el(sidebar, "div", "cpo-actions-bar");
 	const map = new SimilarityMap(canvas, tooltip, stage);
-	map.libraryStatus = paper => deps.libraryBridge?.()?.read(paper) ?? null;
+	map.libraryStatus = paper => paper.id === "discovery:query" ? null : deps.libraryBridge?.()?.read(paper) ?? null;
 	const stopSidebarResize = mountSidebarResize(sidebarResize, sidebar, { onResize: () => map.resize() });
 	let mapFilter: GraphFilter = emptyFilter();
 	map.setKinds(mapFilter.kinds);
 	const graphKey = mountGraphKey(rail, () => mapFilter, (next) => {
 		mapFilter = next;
 		map.setKinds(next.kinds);
+	}, () => {
+		const seed = graph?.nodes.find((node) => node.isSeed) ?? null;
+		if (!seed) return;
+		activateGraphTab();
+		showDetail(seed);
+		scheduleProjectSave();
 	});
 	graphKey.paintColor("force2d");
 	let graph: SimilarityGraph | null = null;
-	let undoCheckpoint: { snapshot: ReturnType<typeof saveGraphSnapshot>; view: SavedView; hidden: Set<string>; deepDives: DeepDiveBatch[]; paperStates: Record<string, ProjectPaperState> } | null = null;
+	type ExploreMode = "citation" | "rank" | "search" | "similar";
+	let exploreMode: ExploreMode = "citation";
+	let discoveryPayload: DiscoveryPayload | null = null;
+	let discoveryGraph: ReturnType<typeof buildDiscoveryGraph> | null = null;
+	let discoveryRevision = 0;
+	let discoveryBusy = false;
+	const discoveryCache = new Map<string, DiscoveryPayload>();
+	let citationSession: { graph: SimilarityGraph; view: SavedView; deepDives: DeepDiveBatch[] } | null = null;
+	type Checkpoint = { snapshot: ReturnType<typeof saveGraphSnapshot>; view: SavedView; hidden: Set<string>; deepDives: DeepDiveBatch[]; paperStates: Record<string, ProjectPaperState> };
+	const UNDO_LIMIT = 50;
+	let undoStack: Checkpoint[] = [];
+	let redoStack: Checkpoint[] = [];
 	let deepDiveBatches: DeepDiveBatch[] = [];
 	let expanding = false;
 	let projectSaveTimer: number | null = null;
 	let persistProjectNow: (current: SimilarityGraph) => void = () => {};
+	const flushProjectSave = (): void => {
+		if (projectSaveTimer !== null) { window.clearTimeout(projectSaveTimer); projectSaveTimer = null; }
+		if (graph) persistProjectNow(graph);
+	};
 	const scheduleProjectSave = (): void => {
 		if (projectSaveTimer !== null) window.clearTimeout(projectSaveTimer);
 		projectSaveTimer = window.setTimeout(() => {
@@ -306,7 +410,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	const paintLists = (): void => {
-		evidenceHeading.textContent = tabTitles[tab] ?? tabTitles.graph;
+		evidenceHeading.textContent = exploreMode !== "citation" && tab === "graph" ? tr("论文详情与检索结果", "Paper details & results") : tabTitles[tab] ?? tabTitles.graph;
 		libraryButton.setAttribute("aria-pressed", tab === "staged" || tab === "excluded" ? "true" : "false");
 		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "research");
 		detail.hidden = tab !== "graph";
@@ -638,7 +742,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		onLayout: (mode) => {
 			layoutMode = mode;
 			map.setLayout(mode);
-			map.setColorMode(defaultColorMode(mode));
+			map.setColorMode(exploreMode === "citation" ? defaultColorMode(mode) : "graph");
 			scheduleProjectSave();
 			graphKey.paintColor(mode);
 		},
@@ -754,6 +858,40 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		selectedPaper = paper;
 		selectedEdge = null;
 		detail.replaceChildren();
+		if (paper && discoveryGraph && discoveryPayload && exploreMode !== "citation") {
+			map.setSelected(paper.id); sheet.setSummary(paper.title, tr("本地探索结果", "Local discovery result"));
+			el(detail, "h3", "cpo-card-title", paper.title);
+			const row = discoveryGraph.rows.get(paper.id);
+			if (!row) { el(detail, "p", "cpo-side-tip", tr("此节点代表问题或查询。选择一篇论文查看详情。", "This node represents the question or query. Select a paper for details.")); return; }
+			const scoreText = discoveryPayload.mode === "rank" ? `ASReview priority percentile: ${row.priority ?? "training seed"}. Screening order, not a relevance probability.`
+				: discoveryPayload.mode === "similar" ? `Title/summary TF-IDF cosine similarity: ${row.similarity ?? "source"}${row.similarity == null ? "" : "%"}.`
+					: `PaperQA2 retrieval rank: ${row.rank ?? "unknown"}. Retrieval position, not a similarity score.`;
+			el(detail, "p", "cpo-fact-note", scoreText);
+			if (discoveryPayload.mode === "similar" && !paper.isSeed && row.note) {
+				const compare = el(detail, "button", "cpo-ghost", tr("以此文献为比较中心", "Compare against this paper"));
+				compare.type = "button";
+				compare.addEventListener("click", () => {
+					sourcePaper.value = sourcePaperLabels.get(row.note!) ?? row.note!;
+					chrome?.setLayout("radial");
+					void generateDiscovery();
+				});
+			}
+			if (row.label) el(detail, "p", "cpo-fact-note", `Question judgment: ${row.label}`);
+			const bridge = deps.libraryBridge?.();
+			if (bridge) {
+				const actions = el(detail, "div", "cpo-paper-actions");
+				for (const [target, label] of [[vaultPath(row.note), tr("打开笔记", "Open result note")], [vaultPath(row.pdf || row.file), tr("打开 PDF", "Open result PDF")]]) if (target) {
+					const button = el(actions, "button", "cpo-ghost", label!); button.type = "button"; button.addEventListener("click", () => bridge.open(target));
+				}
+				paintLibraryAvailability(detail, paper, bridge, deps.openExternal);
+			}
+			const doi = normalizeDoi(paper.doiUrl);
+			if (doi) {
+				const cite = el(detail, "button", "cpo-primary", tr("探索引用网络", "Explore citation network")); cite.type = "button";
+				cite.addEventListener("click", () => { setExploreMode("citation"); void buildResolved({ kind: "doi", value: doi }); });
+			}
+			return;
+		}
 		if (!paper || !graph) {
 			map.setSelected(null);
 			sheet.setSummary(tr("点选节点查看论文", "Select a node to view its paper"), "");
@@ -764,6 +902,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const year = paper.year === null ? tr("年份不详", "Year unknown") : String(paper.year);
 		sheet.setSummary(paper.title, tr(`${year} · 被引 ${formatCount(paper.citedByCount)}`, `${year} · cited ${formatCount(paper.citedByCount)} times`), { lang: paper.language });
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
+		if (!paper.isSeed) {
+			const compare = el(detail, "button", "cpo-ghost", tr("以此文献为比较中心", "Compare against this paper"));
+			compare.type = "button";
+			compare.title = tr("以这篇论文重新构建相似度图谱", "Rebuild the similarity map around this paper");
+			compare.addEventListener("click", () => {
+				chrome?.setLayout("radial");
+				input.value = paper.id;
+				void buildResolved({ kind: "openalex", value: paper.id });
+			});
+		}
 		const library = deps.libraryBridge?.();
 		if (library) paintLibraryAvailability(detail, paper, library, deps.openExternal);
 		const seedNode = graph.nodes.find((node) => node.isSeed) ?? null;
@@ -840,7 +988,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			}
 			const rankInfo = graph.selectionRank?.get(paper.id);
 			if (rankInfo) paintSelectionReasons(detail, rankInfo, score);
-			paintJumpStrip(detail, seedNode, (target) => showDetail(target));
 		}
 		if (!paper.abstract && !abstractMissing.has(paper.id) && !abstractRequested.has(paper.id)) {
 			abstractRequested.add(paper.id);
@@ -868,18 +1015,20 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const onLibraryChanged = (): void => {
 		if (disposed) return;
 		if (graph) deps.libraryBridge?.()?.prefetch?.(graph.nodes);
+		else if (discoveryGraph) deps.libraryBridge?.()?.prefetch?.(discoveryGraph.nodes.filter(paper => paper.id !== "discovery:query"));
 		map.refreshLibraryStatus();
 		if (selectedPaper && tab === "graph") showDetail(selectedPaper);
 	};
 	window.addEventListener("research-connected-library-changed", onLibraryChanged);
 	map.onNodeMenu = (paper, x, y) => {
-		if (!paper || !graph) {
+		if (!paper || !graph || exploreMode !== "citation") {
 			nodeMenu.hidden = true;
 			return;
 		}
 		deleteItem.disabled = paper.isSeed;
 		deleteItem.title = paper.isSeed ? tr("种子不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project");
 		seedItem.disabled = paper.isSeed;
+		seedItem.textContent = layoutMode === "radial" ? tr("以此文献为比较中心", "Compare against this paper") : tr("设为种子", "Set as seed");
 		seedItem.title = paper.isSeed ? tr("已是种子", "Already the seed") : tr("以这篇重建整图", "Rebuild graph with this paper as seed");
 		nodeMenu.dataset.paperId = paper.id;
 		nodeMenu.hidden = false;
@@ -909,6 +1058,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (selectedPaper) removePaper(selectedPaper);
 	};
 	const showEdgeDetail = (edge: GraphEdge): void => {
+		if (discoveryGraph && exploreMode !== "citation") { showDetail(discoveryGraph.nodes.find(paper => paper.id === edge.target) ?? null); return; }
 		if (!graph) return;
 		const a = graph.nodes.find(p => p.id === edge.source), b = graph.nodes.find(p => p.id === edge.target);
 		if (!a || !b) return;
@@ -962,6 +1112,107 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		nodeMenu.hidden = true;
 		delete nodeMenu.dataset.paperId;
 	};
+	function syncExploreControls(): void {
+		chrome?.setSimilarityAvailable(exploreMode === "citation" || exploreMode === "similar");
+		const local = exploreMode !== "citation";
+		method.value = exploreMode;
+		root.classList.toggle("is-discovery", local);
+		form.hidden = local;
+		sourceLabel.hidden = exploreMode !== "similar";
+		pdfLabel.hidden = indexPdfs.hidden = exploreMode !== "search";
+		limitLabel.hidden = runDiscovery.hidden = !local;
+		actionsBar.hidden = local;
+		diagnoseButton.disabled = local || !graph;
+		reload.hidden = local;
+		runDiscovery.textContent = exploreMode === "search" ? tr("搜索 PDF", "Search PDFs") : exploreMode === "similar" ? tr("查找相关论文", "Find related papers") : tr("筛选论文", "Rank papers");
+		if (discoveryBusy) runDiscovery.textContent = tr("正在运行…", "Running…");
+		stage.setAttribute("aria-busy", String(discoveryBusy));
+		const canRun = !!deps.libraryBridge?.()?.discovery && (exploreMode === "similar" ? !!sourcePaper.value.trim() : !!activeQuestion);
+		runDiscovery.disabled = indexPdfs.disabled = discoveryBusy || !canRun;
+		sourcePaper.disabled = pdfQuery.disabled = discoveryLimit.disabled = discoveryBusy;
+		for (const option of Array.from(method.options)) if (option.value !== "citation") option.disabled = !deps.libraryBridge?.()?.discovery;
+	}
+	function clearDiscoverySurface(): void {
+		discoveryPayload = null; discoveryGraph = null; selectedPaper = null; selectedEdge = null;
+		map.setGraph([], [], new Map()); map.setScrubYear(null);
+		chrome?.clearYears(); listPanel.hidden = true; detail.replaceChildren();
+		empty.hidden = false; emptyTitle.hidden = false;
+		emptyTitle.textContent = tr("探索研究问题", "Explore your research question");
+		messageText.textContent = activeQuestion || exploreMode === "similar" ? tr("设置条件后运行，结果会显示在此图谱中。", "Run the selected method to show papers on this graph.") : tr("先在上方选择一个研究问题。", "Choose a research question above first.");
+		showDetail(null);
+	}
+	function discoveryKey(mode: ExploreMode): string { return `${activeQuestion}\n${mode}\n${mode === "similar" ? sourcePaperPath() : ""}`; }
+	function setExploreMode(mode: ExploreMode): void {
+		if (mode === exploreMode) { syncExploreControls(); return; }
+		discoveryRevision++; discoveryBusy = false; generation++; hideResults(); hideNodeMenu(); clearError(); clearUndo();
+		if (exploreMode === "citation") {
+			flushProjectSave();
+			citationSession = graph ? { graph, deepDives: deepDiveBatches, view: { name: "Current view", layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now(), filter: JSON.parse(JSON.stringify(mapFilter)) as GraphFilter } } : null;
+			graph = null;
+		}
+		exploreMode = mode;
+		if (mode === "citation") {
+			discoveryPayload = null; discoveryGraph = null;
+			map.setKinds(mapFilter.kinds);
+			const session = citationSession; citationSession = null;
+			if (session) { deepDiveBatches = session.deepDives; applyGraph(session.graph, session.view, false, false); }
+			else clearDiscoverySurface();
+		} else {
+			tab = "graph"; chrome?.setTab("graph"); detail.hidden = false;
+			map.setKinds({ direct: false, cocitation: false, coupling: false, weak: true });
+			map.setColorMode("graph"); clearDiscoverySurface();
+			const cached = discoveryCache.get(discoveryKey(mode));
+			if (cached) displayDiscovery(cached);
+			else status.textContent = tr("选择条件后运行本地探索。", "Run local discovery when ready.");
+		}
+		setBusy(false); syncExploreControls(); map.resize();
+	}
+	function displayDiscovery(payload: DiscoveryPayload): void {
+		const next = buildDiscoveryGraph(payload, Number(discoveryLimit.value));
+		discoveryPayload = payload; discoveryGraph = next;
+		discoveryCache.set(discoveryKey(exploreMode), payload);
+		if (payload.mode === "search") pdfQuery.value = payload.query ?? "";
+		map.setGraph(next.nodes, next.edges, next.seedScore); map.setColorMode("graph");
+		map.setLayout(layoutMode); map.setScrubYear(null); scrubYear = null;
+		const years = next.nodes.flatMap(paper => paper.year === null ? [] : [paper.year]);
+		if (years.length) chrome?.setYears(Math.min(...years), Math.max(...years)); else chrome?.clearYears();
+		deps.libraryBridge?.()?.prefetch?.(next.nodes.filter(paper => paper.id !== "discovery:query"));
+		empty.hidden = next.nodes.length > 1;
+		if (!empty.hidden) { emptyTitle.textContent = tr("没有匹配的论文", "No matching papers"); messageText.textContent = tr("尝试不同的查询、来源论文或问题。", "Try a different query, source paper or question."); }
+		showDetail(next.nodes.find(paper => !paper.isSeed) ?? next.nodes[0] ?? null);
+		const engine = payload.mode === "rank" ? "ASReview" : payload.mode === "search" ? "PaperQA2" : tr("题名与摘要相似度", "Title/summary similarity");
+		status.textContent = `${engine} · ${next.rows.size}/${next.total} ${tr("篇论文", "papers")}${payload.mode === "search" && payload.query ? ` · ${payload.query}` : ""}`;
+	}
+	async function generateDiscovery(index = false): Promise<void> {
+		const runner = deps.libraryBridge?.()?.discovery;
+		if (!runner || discoveryBusy || exploreMode === "citation") return;
+		if (exploreMode !== "similar" && !activeQuestion) { showError(tr("请先选择研究问题。", "Choose a research question first.")); return; }
+		if (!index && exploreMode === "search" && !pdfQuery.value.trim()) { showError(tr("请输入全文查询。", "Enter a PDF query.")); return; }
+		const request: DiscoveryRequest = { engine: exploreMode === "search" ? "paperqa" : "asreview", mode: exploreMode === "similar" ? "similar" : "rank", question: exploreMode === "similar" ? "" : activeQuestion, paper: exploreMode === "similar" ? sourcePaperPath() : "", query: exploreMode === "search" ? pdfQuery.value.trim() : "" };
+		if (index) { request.action = "index"; request.selection = discoveryCache.get(discoveryKey("rank"))?.papers; }
+		const revision = ++discoveryRevision;
+		discoveryBusy = true; syncExploreControls(); clearError();
+		status.textContent = index ? tr("正在索引选定 PDF…", "Indexing selected PDFs…") : tr("正在生成本地结果…", "Generating local results…");
+		try {
+			const payload = await runner.run(request);
+			if (disposed || revision !== discoveryRevision) return;
+			if (index) status.textContent = tr(`已索引 ${payload.indexed} 篇 PDF，可以开始搜索。`, `${payload.indexed} PDFs indexed. Enter a query to search.`);
+			else displayDiscovery(payload);
+		} catch (error) { if (!disposed && revision === discoveryRevision) { showError(error instanceof Error ? error.message : String(error)); status.textContent = tr("本地探索失败，可重试。", "Local discovery failed. You can retry."); } }
+		finally { if (!disposed && revision === discoveryRevision) { discoveryBusy = false; syncExploreControls(); } }
+	}
+	method.addEventListener("change", () => setExploreMode(method.value as ExploreMode));
+	runDiscovery.addEventListener("click", () => { void generateDiscovery(); });
+	indexPdfs.addEventListener("click", () => { void generateDiscovery(true); });
+	sourcePaper.addEventListener("input", syncExploreControls);
+	sourcePaper.addEventListener("change", () => {
+		if (exploreMode !== "similar") return;
+		discoveryRevision++; discoveryBusy = false; clearDiscoverySurface();
+		const cached = discoveryCache.get(discoveryKey("similar")); if (cached) displayDiscovery(cached);
+		syncExploreControls();
+	});
+	pdfQuery.addEventListener("keydown", event => { if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); void generateDiscovery(); } });
+	discoveryLimit.addEventListener("change", () => { if (discoveryPayload) displayDiscovery(discoveryPayload); });
 
 	const persistProject = (current: SimilarityGraph): void => {
 		const seed = current.nodes.find((node) => node.isSeed);
@@ -979,6 +1230,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			deepDives: deepDiveBatches,
 			paperStates: prior?.paperStates ?? {},
 		};
+		linkGraphToQuestion(project, activeQuestion);
 		void Promise.resolve(deps.saveProject(project)).catch((error) => {
 			status.textContent = error instanceof Error ? tr(`项目保存失败：${error.message}`, `Could not save project: ${error.message}`) : tr("项目保存失败", "Could not save the project");
 		});
@@ -991,17 +1243,23 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	canvas.addEventListener("keyup", saveCurrentViewOnGesture);
 
 	const refreshProjectSelect = (selectedId = currentSeedId()): void => {
-		const projects = Object.values(deps.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt);
+		const all = deps.getSettings().researchProjects ?? {};
+		const questions = new Map((deps.libraryBridge?.()?.discovery?.context().questions ?? []).map(item => [item.path, item.title]));
+		for (const project of Object.values(all)) for (const path of project.questionPaths ?? []) if (!questions.has(path)) questions.set(path, path.split("/").pop()!.replace(/\.md$/, ""));
+		if (activeQuestion && !questions.has(activeQuestion)) questions.set(activeQuestion, activeQuestion.split("/").pop()!.replace(/\.md$/, ""));
+		questionSelect.replaceChildren();
+		const unassigned = createEl("option", { value: "", text: tr("未关联问题的图谱", "Unassigned graphs") }); questionSelect.append(unassigned);
+		for (const [path, title] of questions) questionSelect.append(createEl("option", { value: path, text: title }));
+		questionSelect.value = activeQuestion;
+		openQuestion.disabled = !activeQuestion;
+		syncExploreControls();
+		const projects = graphsForQuestion(all, activeQuestion);
 		projectSelect.replaceChildren();
-		if (projects.length === 0) {
+		if (!projects.some(project => project.seedId === selectedId)) {
 			const option = createEl("option");
-			option.textContent = tr("研究项目", "Research project");
+			option.value = "";
+			option.textContent = tr("选择或构建引用图谱", "Choose or build a citation graph");
 			projectSelect.append(option);
-			projectSelect.disabled = true;
-			renameProjectButton.disabled = true;
-			viewSelect.disabled = true;
-			viewNameInput.disabled = true;
-			return;
 		}
 		for (const project of projects) {
 			const option = createEl("option");
@@ -1009,10 +1267,17 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			option.textContent = project.name;
 			projectSelect.append(option);
 		}
-		projectSelect.disabled = false;
-		projectSelect.value = projects.some((project) => project.seedId === selectedId) ? selectedId! : projects[0]!.seedId;
-		renameProjectButton.disabled = false;
-		viewNameInput.disabled = false;
+		if (activeQuestion) {
+			const others = Object.values(all).filter(project => project.snapshot && !projects.includes(project));
+			if (others.length) {
+				const group = createEl("optgroup", { attr: { label: tr("关联已有图谱…", "Link existing graph…") } });
+				for (const project of others) group.append(createEl("option", { value: project.seedId, text: project.name }));
+				projectSelect.append(group);
+			}
+		}
+		projectSelect.disabled = projectSelect.options.length === 1 && !projectSelect.options[0]?.value;
+		projectSelect.value = projects.some((project) => project.seedId === selectedId) ? selectedId! : "";
+		renameProjectButton.disabled = viewNameInput.disabled = !projectSelect.value;
 		saveViewButton.disabled = !graph;
 		refreshViews();
 	};
@@ -1044,6 +1309,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const project = deps.getSettings().researchProjects[projectSelect.value];
 		const snapshot = project && restoreGraphSnapshot(project.snapshot);
 		if (!project || !snapshot) return;
+		linkGraphToQuestion(project, activeQuestion);
+		void Promise.resolve(deps.saveProject?.(project)).catch(error => { status.textContent = String(error); });
 		deepDiveBatches = project.deepDives ?? [];
 		clearUndo();
 		generation += 1;
@@ -1051,6 +1318,30 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		setBusy(false);
 		refreshProjectSelect(project.seedId);
 		status.textContent = tr(`已切换到研究项目「${project.name}」`, `Switched to research project “${project.name}”`);
+	});
+	questionSelect.addEventListener("change", () => {
+		const nextQuestion = questionSelect.value;
+		const previousMode = exploreMode;
+		if (exploreMode !== "citation") setExploreMode("citation");
+		flushProjectSave();
+		activeQuestion = nextQuestion;
+		deps.getSettings().activeQuestion = activeQuestion;
+		void Promise.resolve(deps.persistSettings?.()).catch(error => { status.textContent = String(error); });
+		generation++; clearUndo(); hideResults(); hideNodeMenu(); clearError();
+		const project = graphsForQuestion(deps.getSettings().researchProjects, activeQuestion)[0];
+		const snapshot = project && restoreGraphSnapshot(project.snapshot);
+		if (snapshot) { deepDiveBatches = project.deepDives ?? []; applyGraph(snapshot, project.currentView, false, false); }
+		else {
+			graph = null; deepDiveBatches = []; selectedPaper = null; selectedEdge = null;
+			hiddenIds = new Set(); scrubYear = null; chrome?.clearYears(); diagnoseButton.disabled = true;
+			map.setGraph([], [], new Map()); showDetail(null); paintLists();
+			empty.hidden = false; emptyTitle.hidden = false;
+			emptyTitle.textContent = tr("探索这个研究问题", "Explore this question");
+			messageText.textContent = tr("筛选论文、搜索本地 PDF，或选择种子论文构建引用图谱。", "Rank papers, search local PDFs, or build a citation graph from a seed paper.");
+		}
+		setBusy(false); refreshProjectSelect(project?.seedId);
+		status.textContent = activeQuestion ? tr("研究问题已选定。", "Research question selected.") : tr("未关联问题的图谱", "Unassigned graphs");
+		if (previousMode !== "citation") { pdfQuery.value = ""; setExploreMode(previousMode); }
 	});
 
 	viewNameInput.addEventListener("input", () => {
@@ -1139,24 +1430,36 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		}
 	};
 
-	function clearUndo(): void {
-		undoCheckpoint = null;
-		undoButton.hidden = true;
-		undoButton.disabled = true;
+	function updateUndoUi(): void {
+		undoButton.hidden = !undoStack.length && !redoStack.length;
+		redoButton.hidden = undoButton.hidden;
+		undoButton.disabled = !undoStack.length;
+		redoButton.disabled = !redoStack.length;
+		statusBar.hidden = undoButton.hidden ? statusIsExternal : false;
 	}
+	function clearUndo(): void {
+		undoStack = [];
+		redoStack = [];
+		updateUndoUi();
+	}
+	const captureCheckpoint = (): Checkpoint | null => {
+		if (!graph) return null;
+		const seedId = currentSeedId();
+		const stateSource = seedId ? deps.getSettings().researchProjects[seedId]?.paperStates ?? {} : {};
+		return {
+			snapshot: JSON.parse(JSON.stringify(saveGraphSnapshot(graph))) as ReturnType<typeof saveGraphSnapshot>,
+			view: { name: tr("当前视图", "Current view"), layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now(), filter: JSON.parse(JSON.stringify(mapFilter)) as GraphFilter, leftCollapsed: body.classList.contains("is-rail-collapsed"), rightCollapsed: body.classList.contains("is-sidebar-collapsed") },
+			hidden: new Set(hiddenIds),
+			deepDives: JSON.parse(JSON.stringify(deepDiveBatches)) as DeepDiveBatch[],
+			paperStates: JSON.parse(JSON.stringify(stateSource)) as Record<string, ProjectPaperState>,
+		};
+	};
 	const applyEdit = (next: SimilarityGraph, note: string, nearId?: string, reflow = false): void => {
-		if (graph) {
-			const seedId = currentSeedId();
-			const stateSource = seedId ? deps.getSettings().researchProjects[seedId]?.paperStates ?? {} : {};
-			undoCheckpoint = {
-				snapshot: JSON.parse(JSON.stringify(saveGraphSnapshot(graph))) as ReturnType<typeof saveGraphSnapshot>,
-				view: { name: tr("当前视图", "Current view"), layout: layoutMode, scrubYear, ...map.getViewState(), updatedAt: Date.now(), filter: JSON.parse(JSON.stringify(mapFilter)) as GraphFilter, leftCollapsed: body.classList.contains("is-rail-collapsed"), rightCollapsed: body.classList.contains("is-sidebar-collapsed") },
-				hidden: new Set(hiddenIds),
-				deepDives: JSON.parse(JSON.stringify(deepDiveBatches)) as DeepDiveBatch[],
-				paperStates: JSON.parse(JSON.stringify(stateSource)) as Record<string, ProjectPaperState>,
-			};
-			undoButton.hidden = false;
-			undoButton.disabled = false;
+		const checkpoint = captureCheckpoint();
+		if (checkpoint) {
+			undoStack = [...undoStack, checkpoint].slice(-UNDO_LIMIT);
+			redoStack = [];
+			updateUndoUi();
 		}
 		graph = next;
 		map.adoptGraph(next.nodes, next.edges, next.seedScore, nearId, reflow);
@@ -1178,32 +1481,59 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		status.textContent = tr(`${note} · ${next.nodes.length} 篇 · ${next.edges.length} 条关系`, `${note} · ${next.nodes.length} papers · ${next.edges.length} links`);
 		persistProject(next);
 	};
-	const undoEdit = (): void => {
-		const checkpoint = undoCheckpoint;
-		if (!checkpoint) return;
+	const restoreCheckpoint = (checkpoint: Checkpoint): boolean => {
 		const previous = restoreGraphSnapshot(checkpoint.snapshot);
-		if (!previous) { clearUndo(); status.textContent = tr("无法恢复上一步图谱", "Could not restore the previous graph state"); return; }
-		clearUndo();
-		deepDiveBatches = checkpoint.deepDives;
+		if (!previous) return false;
+		deepDiveBatches = JSON.parse(JSON.stringify(checkpoint.deepDives)) as DeepDiveBatch[];
 		const seedId = previous.nodes.find((node) => node.isSeed)?.id;
 		if (seedId) {
 			const project = deps.getSettings().researchProjects[seedId];
-			if (project) project.paperStates = checkpoint.paperStates;
+			if (project) project.paperStates = JSON.parse(JSON.stringify(checkpoint.paperStates)) as Record<string, ProjectPaperState>;
 		}
 		applyGraph(previous, checkpoint.view, false);
-		hiddenIds = checkpoint.hidden;
+		hiddenIds = new Set(checkpoint.hidden);
 		void deps.persistSettings?.();
-		status.textContent = tr("已撤销上一步图谱修改", "Undid the last graph change");
+		return true;
 	};
-	undoButton.addEventListener("click", undoEdit);
+	const stepHistory = (direction: "undo" | "redo"): void => {
+		const target = (direction === "undo" ? undoStack : redoStack).at(-1);
+		if (!target) return;
+		const current = captureCheckpoint();
+		if (!restoreCheckpoint(target)) { clearUndo(); status.textContent = tr("无法恢复图谱状态", "Could not restore the graph state"); return; }
+		if (direction === "undo") {
+			undoStack = undoStack.slice(0, -1);
+			if (current) redoStack = [...redoStack, current];
+		} else {
+			redoStack = redoStack.slice(0, -1);
+			if (current) undoStack = [...undoStack, current].slice(-UNDO_LIMIT);
+		}
+		updateUndoUi();
+		status.textContent = direction === "undo" ? tr("已撤销上一步图谱修改", "Undid the last graph change") : tr("已重做图谱修改", "Redid the graph change");
+	};
+	undoButton.addEventListener("click", () => stepHistory("undo"));
+	redoButton.addEventListener("click", () => stepHistory("redo"));
+	// Rebuilding the detail panel drops focus to <body>, so listen on the document and
+	// accept body-targeted keys while the last pointer press was inside this view.
+	const undoDoc = root.ownerDocument;
+	let pointerInside = false;
+	const onUndoPointer = (event: PointerEvent): void => {
+		pointerInside = event.target instanceof Node && root.contains(event.target);
+	};
 	const onUndoKey = (event: KeyboardEvent): void => {
-		if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z" || event.shiftKey) return;
-		if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable='true']")) return;
-		if (!undoCheckpoint) return;
+		if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+		const key = event.key.toLowerCase();
+		const redo = key === "y" || (key === "z" && event.shiftKey);
+		if (!redo && key !== "z") return;
+		const target = event.target;
+		if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
+		const inside = (target instanceof Node && root.contains(target)) || (pointerInside && (target === undoDoc.body || target === undoDoc.documentElement));
+		if (!inside || !root.isConnected) return;
+		if (!(redo ? redoStack : undoStack).length) return;
 		event.preventDefault();
-		undoEdit();
+		stepHistory(redo ? "redo" : "undo");
 	};
-	root.addEventListener("keydown", onUndoKey);
+	undoDoc.addEventListener("pointerdown", onUndoPointer, true);
+	undoDoc.addEventListener("keydown", onUndoKey);
 
 	const currentSeedId = (): string | null => graph?.nodes.find((node) => node.isSeed)?.id ?? null;
 
@@ -1291,7 +1621,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			};
 			deepDiveBatches = [...deepDiveBatches, batch].slice(-100);
 			applyEdit(refreshDerived(graftNodes(host, [...papers, ...aliases], lists)), tr(`已并入 ${papers.length} 篇（${directions.join(" · ")}）${result.noMore ? " · 已到候选末尾" : ""}${result.warnings.length ? ` · ${result.warnings.join("；")}` : ""}`, `Added ${papers.length} papers (${directions.join(" · ")})${result.noMore ? " · end of candidates" : ""}${result.warnings.length ? ` · ${result.warnings.join("; ")}` : ""}`), paper.id);
-			if (undoCheckpoint) undoCheckpoint.deepDives = previousBatches;
+			if (undoStack.length) undoStack[undoStack.length - 1]!.deepDives = previousBatches;
 		} catch (error) {
 			if (disposed || token !== generation || graph !== host) return;
 			status.textContent = error instanceof Error ? error.message : tr("深挖失败。", "Deep dive failed.");
@@ -1312,6 +1642,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	});
 
 	const applyGraph = (next: SimilarityGraph, restoreView?: SavedView, enrich = true, persist = true): void => {
+		if (exploreMode !== "citation") { discoveryRevision++; discoveryBusy = false; exploreMode = "citation"; discoveryPayload = null; discoveryGraph = null; citationSession = null; map.setKinds(mapFilter.kinds); syncExploreControls(); }
 		next = normalizeWorkGraph(next);
 		const seedId = next.nodes.find((node) => node.isSeed)?.id;
 		const savedProject = seedId ? deps.getSettings().researchProjects[seedId] : undefined;
@@ -1331,11 +1662,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		empty.hidden = true;
 		hideResults();
 		const seed = next.nodes.find((node) => node.isSeed) ?? null;
-		if (seed) {
-			seedSummary.hidden = false;
-			seedTitle.textContent = seed.title || seed.id;
-			seedMeta.textContent = [seed.authors, seed.year ?? tr("年份不详", "Year unknown"), tr("种子论文", "Seed paper")].filter(Boolean).join(" · ");
-		}
 		saveViewButton.disabled = !seed || !viewNameInput.value.trim();
 		showDetail(seed);
 		map.setGraph(next.nodes, next.edges, next.seedScore);
@@ -1475,6 +1801,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }, refresh = false): Promise<void> => {
+		if (exploreMode !== "citation") setExploreMode("citation");
 		if (!refresh) {
 			const matches = matchingSeedProjects(deps.getSettings().researchProjects, target);
 			if (matches.length > 1 && !(target.kind === "openalex" && deps.getSettings().researchProjects[shortId(target.value)])) {
@@ -1484,6 +1811,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const project = savedProjectForSeed(deps.getSettings().researchProjects, target);
 			const snapshot = project && restoreGraphSnapshot(project.snapshot);
 			if (snapshot) {
+				linkGraphToQuestion(project, activeQuestion);
+				void Promise.resolve(deps.saveProject?.(project)).catch(error => { status.textContent = String(error); });
 				clearError();
 				hideResults();
 				if (currentSeedId() !== project.seedId) {
@@ -1717,7 +2046,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	window.requestAnimationFrame(() => map.resize());
 
 	const initial = deps.initialTarget ?? (deps.initialDoi ? { kind: "doi" as const, value: deps.initialDoi } : null);
-	const saved = initial ? null : deps.loadSavedProject?.() ?? null;
+	const saved = initial ? null : graphsForQuestion(deps.getSettings().researchProjects, activeQuestion)[0] ?? (!activeQuestion && !deps.libraryBridge?.()?.discovery ? deps.loadSavedProject?.() ?? null : null);
 	const restored = saved ? restoreGraphSnapshot(saved.snapshot) : null;
 	if (restored) {
 		deepDiveBatches = saved?.deepDives ?? [];
@@ -1728,6 +2057,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		input.value = initial.value;
 		void buildResolved(initial);
 	}
+	refreshProjectSelect();
+	syncExploreControls();
 
 	let pathResult: CitationPathResult | null = null;
 	let pathIndex = 0;
@@ -1832,8 +2163,24 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	return {
 		openDoiPathSearch,
+		openDiscovery: (options = {}) => {
+			const question = questionPath(options.question ?? options.payload?.question);
+			if (question && question !== activeQuestion) {
+				if (!Array.from(questionSelect.options).some(option => option.value === question)) questionSelect.append(createEl("option", { value: question, text: question.split("/").pop() }));
+				questionSelect.value = question; questionSelect.dispatchEvent(new Event("change"));
+			}
+			const source = options.paper || options.payload?.source?.note;
+			const sourceLabel = source ? sourcePaperLabels.get(source) ?? source : "";
+			if (sourceLabel && sourceLabel !== sourcePaper.value) { sourcePaper.value = sourceLabel; sourcePaper.dispatchEvent(new Event("change")); }
+			const mode = options.payload?.mode ?? (options.paper ? "similar" : options.mode ?? "rank");
+			if (mode === "index") return;
+			setExploreMode(mode);
+			if (options.payload) displayDiscovery(options.payload);
+			if (mode === "search") pdfQuery.focus();
+		},
 		destroy: () => {
 			disposed = true;
+			discoveryRevision++;
 			generation += 1;
 			if (projectSaveTimer !== null) window.clearTimeout(projectSaveTimer);
 			canvas.removeEventListener("pointerup", saveCurrentViewOnGesture);
@@ -1843,7 +2190,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			sheet.destroy();
 			stopSidebarResize();
 			observer.disconnect();
-			root.removeEventListener("keydown", onUndoKey);
+			undoDoc.removeEventListener("keydown", onUndoKey);
+			undoDoc.removeEventListener("pointerdown", onUndoPointer, true);
 			root.removeEventListener("keydown", onKey);
 			window.removeEventListener("pointerdown", onPointerDown);
 			window.removeEventListener("research-connected-settings", onSettings);
@@ -1851,6 +2199,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			window.removeEventListener("research-connected-theme", onTheme);
 			window.removeEventListener("research-connected-library-changed", onLibraryChanged);
 			map.destroy();
+			if (statusIsExternal) status.remove();
 			root.replaceChildren();
 			root.classList.remove("cpo-root", "is-narrow");
 		},

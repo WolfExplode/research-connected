@@ -1,6 +1,7 @@
 import { mountGraphApp } from "../src/app";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { fixtureGet } from "../preview/fixture";
+import { verifyIntegratedWorkflow } from "./verify-integrated-workflow";
 
 function check(value: unknown, message: string): asserts value {
 	if (!value) throw new Error(message);
@@ -29,6 +30,12 @@ async function verify(): Promise<void> {
 	for (const hidden of Array.from(root.querySelectorAll<HTMLElement>("[hidden]"))) {
 		check(getComputedStyle(hidden).display === "none", "hidden controls must stay hidden without important overrides");
 	}
+	const similarity = root.querySelector<HTMLButtonElement>('[data-layout="radial"]')!;
+	check(similarity.textContent?.includes("相似度"), "radial is presented as Similarity");
+	similarity.click();
+	check(similarity.getAttribute("aria-pressed") === "true", "Similarity activates on the shared canvas");
+	check(!root.querySelector(".cpo-similarity-list"), "Similarity has no competing permanent ranked list");
+	root.querySelector<HTMLButtonElement>('[data-layout="force2d"]')!.click();
 	const reading = root.querySelector<HTMLSelectElement>(".cpo-paper-reading-select")!;
 	reading.value = "read";
 	reading.dispatchEvent(new Event("change"));
@@ -54,6 +61,8 @@ async function verify(): Promise<void> {
 	form.requestSubmit();
 	check(root.querySelector(".cpo-agg-list")?.textContent?.includes("W2"), "valid endpoints must render a citation path");
 	handle.destroy();
+	document.documentElement.lang = "en";
+	await verifyIntegratedWorkflow(root);
 	document.body.textContent = "PASS: reading persistence and rollback, visible path search, invalid and valid endpoints, hidden controls, cleanup";
 	document.body.dataset.result = "passed";
 }

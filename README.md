@@ -18,7 +18,7 @@ Select a node or an edge to see shared references, co-citations, and direct cita
 
 ## What you can do
 
-- **Discover related research.** Enter a title, DOI, or OpenAlex ID and build a sampled similarity map. Switch among planar, timeline, and radial layouts.
+- **Discover related research.** Enter a title, DOI, or OpenAlex ID and build a sampled similarity map. Switch among Planar, Timeline, and Similarity views. Similarity fixes the comparison paper at the center and places other papers at score-defined distances. Drag a paper around its orbit to untangle overlaps; its distance stays fixed. Select a paper for score details, or use “Compare against this paper” in its context menu to rebuild around it. No local PDFs are required.
 - **Inspect each connection.** Read the references and citation evidence behind a relationship. Semantic Scholar, Crossref, and OpenCitations fill gaps and flag mismatched records.
 - **Organize your reading.** Stage papers, mark them to read or read, exclude noise, and save named views. Write literature notes, embed the graph, or export BibTeX, YAML, and Markdown.
 
