@@ -3,7 +3,7 @@ import { isChinese, tr } from "./i18n";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
-import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintJumpStrip, paintIdentitySources, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
+import { edgeSourcesText, ORIGIN_TEXT, paintAbstractCard, paintAggregateCard, paintIdentitySources, paintLiteratureLink, paintMetadataCard, paintMeter, paintPaperWorkflowState, paintRelationSection, paintSelectionReasons, semanticHintFor } from "./detail-cards";
 import { EMBED_HEIGHT_LIMIT, EMBED_WIDTH_LIMIT, parseEmbed, type EmbedSpec } from "./embed-syntax";
 import { mountGraphKey } from "./filter-controls";
 import { emptyFilter, SIMILARITY_NOT_CITATION, visibleNodes, type GraphFilter } from "./graph-filter";
@@ -209,6 +209,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		viewFilter = next;
 		applyFilter();
 		paintLists();
+	}, () => {
+		const seed = currentGraph?.nodes.find((node) => node.isSeed) ?? null;
+		if (seed && currentGraph) showDetail(seed, currentGraph, null);
 	});
 	graphKey.paintColor(layoutMode);
 	let tab: GraphTab = "graph";
@@ -501,9 +504,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			}
 			const rankInfo = graph.selectionRank?.get(paper.id);
 			if (rankInfo) paintSelectionReasons(detail, rankInfo, graph.seedScore.get(paper.id));
-			paintJumpStrip(detail, seed, (target) => {
-				if (currentGraph) showDetail(target, currentGraph, null);
-			});
 		}
 		if (link && seed && !samePair(link, paper.id, seed.id)) {
 			const from = byId.get(link.source);

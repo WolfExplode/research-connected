@@ -158,45 +158,6 @@
 	font-weight: 700;
 }
 
-.cpo-seed-summary {
-	flex: none;
-	min-width: 0;
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 9px 16px;
-	border-bottom: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-}
-
-.cpo-seed-summary.cpo-seed-summary[hidden] { display: none; }
-.cpo-seed-mark {
-	width: 9px;
-	height: 9px;
-	flex: none;
-	border: 2px solid var(--cpo-accent);
-	border-radius: 50%;
-	outline: 1px solid color-mix(in srgb, var(--cpo-accent) 55%, transparent);
-	outline-offset: 2px;
-}
-.cpo-seed-title {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	font-size: 13px;
-	font-weight: 600;
-}
-.cpo-seed-meta {
-	flex: none;
-	max-width: 42%;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	color: var(--text-muted);
-	font-size: 11px;
-}
-
 .cpo-form {
 	display: flex;
 	gap: 8px;
@@ -306,10 +267,25 @@
 	border-top: 1px solid var(--background-modifier-border);
 }
 
+.cpo-statusbar[hidden] { display: none; }
+
 .cpo-statusbar .cpo-status { flex: 1; }
 .cpo-statusbar .cpo-undo { flex: none; padding: 3px 8px; font-size: 11px; }
 .cpo-statusbar.cpo-statusbar .cpo-undo.cpo-undo[hidden] { display: none; }
 .cpo-evidence-header .cpo-diagnose { flex: none; margin: 0; padding: 3px 8px; font-size: 11px; }
+
+.workspace-leaf-content[data-type="research-connected"] .view-header .cpo-view-status {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	min-width: 0;
+	margin: 0 12px;
+}
+
+.workspace-leaf-content[data-type="research-connected"] .view-header .cpo-view-status .cpo-status {
+	width: 100%;
+	font-size: 12px;
+}
 
 .cpo-diagnose-form { display: flex; gap: 7px; margin: 10px 0; }
 .cpo-diagnose-form input { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-primary); color: var(--text-normal); font: inherit; }
@@ -732,6 +708,27 @@
 }
 .cpo-zoom button:disabled { opacity: .55; cursor: progress; }
 
+.cpo-graph-guide {
+	position: absolute;
+	z-index: 6;
+	top: 14px;
+	right: 70px;
+	width: min(360px, calc(100% - 86px));
+	max-height: calc(100% - 28px);
+	overflow: auto;
+	box-sizing: border-box;
+	padding: 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	box-shadow: var(--shadow-s);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.cpo-graph-guide[hidden] { display: none; }
+.cpo-graph-guide p { margin: 10px 0; }
+
 @media (hover: hover) and (pointer: fine) {
 	.cpo-stage .cpo-zoom,
 	.cpo-stage .cpo-source-actions,
@@ -818,6 +815,14 @@
 	color: var(--text-muted);
 	font-size: 11px;
 	line-height: 1.35;
+}
+
+button.cpo-graph-key-seed:not(:disabled):hover {
+	background: var(--background-modifier-hover);
+}
+
+button.cpo-graph-key-seed:disabled {
+	cursor: default;
 }
 
 .cpo-graph-key-seed i {
@@ -2220,16 +2225,6 @@ button.cpo-agg-item {
 .cpo-root .cpo-results {
 	box-shadow: 0 8px 24px var(--background-modifier-box-shadow, rgba(0, 0, 0, 0.14));
 }
-.cpo-root.is-narrow .cpo-seed-summary {
-	flex-wrap: wrap;
-	gap: 5px 9px;
-	padding: 7px 12px;
-}
-.cpo-root.is-narrow .cpo-seed-meta {
-	max-width: calc(100% - 22px);
-	margin-left: 19px;
-}
-
 /* Shared resizable evidence sidebar. The graph stays dominant; navigation
    belongs to the evidence rail instead of spanning the canvas. */
 .cpo-evidence-sidebar {
@@ -2675,6 +2670,26 @@ button.cpo-agg-item {
 	scrollbar-width: none;
 }
 .cpo-paper-actions::-webkit-scrollbar { display: none; }
+
+/* Availability stays readable in the narrow paper details rail. */
+.cpo-library-availability { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cpo-library-availability .cpo-availability-local { font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+.cpo-availability-providers { display: grid; gap: 8px; }
+.cpo-availability-provider { min-width: 0; padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: 8px; background: var(--background-secondary); }
+.cpo-availability-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; font-size: 12px; line-height: 1.5; }
+.cpo-availability-status { color: var(--text-muted); font-size: 11px; }
+.cpo-availability-status[data-state="available"] { color: var(--text-accent, var(--interactive-accent)); }
+.cpo-availability-status[data-state="error"] { color: var(--text-error); }
+.cpo-library-availability .cpo-availability-meta { display: block; color: var(--text-muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.cpo-availability-provider .cpo-availability-meta { margin-top: 4px; }
+.cpo-availability-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cpo-availability-links:empty { display: none; }
+.cpo-library-availability .cpo-paper-actions { flex-wrap: wrap; justify-content: flex-start; gap: 8px; padding-top: 12px; overflow: visible; }
+.cpo-library-availability .cpo-paper-actions:empty { display: none; }
+.cpo-library-availability button { max-width: 100%; height: auto; min-height: 30px; padding: 6px 10px; font-size: 12px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+.cpo-library-availability button:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
+.cpo-library-availability .cpo-availability-feedback { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.cpo-availability-feedback:empty { display: none; }
 .cpo-root select.cpo-paper-reading-select,
 .cpo-embed select.cpo-paper-reading-select {
 	width: 64px;
@@ -3153,25 +3168,6 @@ button.cpo-agg-item {
 .cpo-root button.cpo-primary {
 	height: 34px;
 	padding-inline: 12px;
-}
-
-.cpo-root .cpo-seed-summary {
-	flex: 1 1 260px;
-	min-width: 0;
-	padding: 4px 0;
-	gap: 8px;
-	min-height: 30px;
-	border: 0;
-	background: transparent;
-}
-
-.cpo-root .cpo-seed-title {
-	font-size: 13px;
-	font-weight: 650;
-}
-
-.cpo-root .cpo-seed-meta {
-	font-size: 10.5px;
 }
 
 .cpo-root .cpo-body.is-rail-collapsed > .cpo-rail,
@@ -3716,4 +3712,149 @@ button.cpo-agg-item {
 .cpo-help-links {
 	flex-wrap: wrap;
 	gap: 8px 12px;
+}
+
+/* Workspace toolbar: compact controls, followed by whole wrapping menus. */
+.cpo-question-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cpo-discovery-controls label[hidden], .cpo-discovery-controls button[hidden] { display: none; }
+
+.cpo-explore-tools { display: contents; }
+.cpo-explore-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.cpo-explore-field input, .cpo-explore-field select { max-width: 100%; }
+.cpo-explore-source, .cpo-explore-query { flex: 1 1 240px; }
+.cpo-explore-tools [hidden], .cpo-root .cpo-project-tools > [hidden], .cpo-root .cpo-bar form[hidden], .cpo-root .cpo-actions-bar[hidden] { display: none; }
+.cpo-root .cpo-project-tools .cpo-explore-tools > [hidden] { display: none; }
+.cpo-root.is-discovery .cpo-topline, .cpo-root.is-discovery .cpo-evidence-tools { display: none; }
+.cpo-root.is-discovery .cpo-graph-key { display: none; }
+
+/* Keep workspace controls quiet until their matching icon is requested. */
+.cpo-root .cpo-workspace-controls { display: contents; }
+
+.cpo-workspace-toggles {
+	display: flex;
+	flex: none;
+	gap: 7px;
+}
+
+.cpo-root .cpo-project-tools button.cpo-workspace-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	min-height: 36px;
+	margin: 0;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 7px;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.cpo-root .cpo-project-tools button.cpo-workspace-toggle[hidden] {
+	display: none;
+}
+
+.cpo-root .cpo-project-tools button.cpo-workspace-toggle:hover,
+.cpo-root .cpo-project-tools button.cpo-workspace-toggle.is-active {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	color: var(--interactive-accent);
+}
+
+.cpo-root .cpo-workspace-toggle .cpo-icon-glyph {
+	width: 18px;
+	height: 18px;
+}
+
+.cpo-root .cpo-workspace-menu {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 7px;
+	min-width: 0;
+	width: max-content;
+	max-width: 100%;
+	align-self: flex-end;
+}
+
+.cpo-root .cpo-workspace-menu[hidden] {
+	display: none;
+}
+
+.cpo-root .cpo-project-tools .cpo-form {
+	flex: 1 1 340px;
+	min-width: min(340px, 100%);
+}
+
+/* One shared toolbar layout for citation, ranking, similarity and PDF search. */
+.cpo-root .cpo-project-tools {
+	align-items: flex-end;
+	gap: 8px;
+	margin-top: 0;
+	padding-top: 0;
+	border-top: 0;
+}
+
+.cpo-root .cpo-explore-method {
+	flex: 0 1 230px;
+	width: 230px;
+	min-width: 180px;
+}
+
+.cpo-root .cpo-explore-source,
+.cpo-root .cpo-explore-query {
+	flex: 1 1 240px;
+}
+
+.cpo-root .cpo-explore-field > input,
+.cpo-root .cpo-explore-field > select {
+	width: 100%;
+	min-width: 0;
+	margin: 0;
+}
+
+.cpo-root .cpo-explore-field:has(> select) {
+	flex: 0 0 76px;
+}
+
+.cpo-root .cpo-project-tools .cpo-explore-method,
+.cpo-root .cpo-project-tools .cpo-explore-field > input,
+.cpo-root .cpo-project-tools .cpo-explore-field > select,
+.cpo-root .cpo-project-tools input.cpo-input,
+.cpo-root .cpo-project-tools button.cpo-primary,
+.cpo-root .cpo-project-tools button.cpo-index-pdfs,
+.cpo-root .cpo-project-tools button.cpo-workspace-toggle {
+	height: 36px;
+	min-height: 36px;
+	border-radius: 7px;
+}
+
+.cpo-root .cpo-project-tools button.cpo-index-pdfs {
+	width: 36px;
+	flex: 0 0 36px;
+	padding: 0;
+	justify-content: center;
+	margin: 0;
+}
+
+.cpo-root .cpo-project-tools button.cpo-workspace-toggle {
+	width: 36px;
+}
+
+.cpo-root .cpo-workspace-toggles {
+	align-self: flex-end;
+}
+
+.cpo-root .cpo-workspace-menu .cpo-view-group {
+	flex: 0 0 auto;
+	margin-left: 0;
+}
+
+.cpo-root .cpo-project-tools .cpo-workspace-menu .cpo-question-select {
+	flex: 0 1 440px;
+	width: min(440px, 100%);
+	max-width: 100%;
 }

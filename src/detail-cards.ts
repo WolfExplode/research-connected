@@ -121,18 +121,18 @@ export function paintAuthorChips(parent: HTMLElement, paper: PaperNode): void {
 	const names = paper.authorList?.length ? paper.authorList : paper.authors ? [paper.authors] : [];
 	if (names.length === 0) return;
 	const row = el(parent, "div", "cpo-badge-row cpo-author-chips");
-	const text = el(row, "span", "cpo-paper-authors", names.slice(0, 5).join(" · "));
-	if (names.length > 5) {
-		const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 5}`);
+	const text = el(row, "span", "cpo-paper-authors", names.slice(0, 1).join(" · "));
+	if (names.length > 1) {
+		const more = el(row, "button", "cpo-chip cpo-chip-author cpo-author-more", `+${names.length - 1}`);
 		more.type = "button";
 		more.setAttribute("aria-expanded", "false");
-		more.setAttribute("aria-label", tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
+		more.setAttribute("aria-label", tr(`显示其余 ${names.length - 1} 位作者`, `Show ${names.length - 1} more authors`));
 		more.onclick = () => {
 			const expanded = more.getAttribute("aria-expanded") !== "true";
 			more.setAttribute("aria-expanded", String(expanded));
-			text.textContent = (expanded ? names : names.slice(0, 5)).join(" · ");
-			more.textContent = expanded ? tr("收起", "Collapse") : `+${names.length - 5}`;
-			more.setAttribute("aria-label", expanded ? tr("收起其余作者", "Collapse other authors") : tr(`显示其余 ${names.length - 5} 位作者`, `Show ${names.length - 5} more authors`));
+			text.textContent = (expanded ? names : names.slice(0, 1)).join(" · ");
+			more.textContent = expanded ? tr("收起", "Collapse") : `+${names.length - 1}`;
+			more.setAttribute("aria-label", expanded ? tr("收起其余作者", "Collapse other authors") : tr(`显示其余 ${names.length - 1} 位作者`, `Show ${names.length - 1} more authors`));
 		};
 	}
 }
@@ -182,29 +182,28 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 	if (paper.concepts.length > 0) {
 		const topics = el(card, "div", "cpo-paper-topics");
 		topics.setAttribute("aria-label", tr("论文主题", "Paper topics"));
-		for (const name of paper.concepts.slice(0, 3)) el(topics, "span", "cpo-paper-topic", name);
-		if (paper.concepts.length > 3) {
-			const more = el(topics, "button", "cpo-paper-topic-more", `+${paper.concepts.length - 3}`);
-			more.type = "button";
-			more.setAttribute("aria-expanded", "false");
-			more.setAttribute("aria-label", tr(`显示其余 ${paper.concepts.length - 3} 个主题`, `Show ${paper.concepts.length - 3} more topics`));
-			more.onclick = () => {
-				const expanded = more.getAttribute("aria-expanded") !== "true";
-				more.setAttribute("aria-expanded", String(expanded));
-				if (expanded) {
-					for (const name of paper.concepts.slice(3)) {
-						const chip = createSpan();
-						chip.className = "cpo-paper-topic cpo-paper-topic-extra";
-						chip.textContent = name;
-						more.before(chip);
-					}
-					more.textContent = tr("收起", "Collapse");
-				} else {
-					topics.querySelectorAll(".cpo-paper-topic-extra").forEach((chip) => chip.remove());
-					more.textContent = `+${paper.concepts.length - 3}`;
+		const count = paper.concepts.length;
+		const idleLabel = tr(`+${count} 个标签`, `+${count} ${count === 1 ? "tag" : "tags"}`);
+		const more = el(topics, "button", "cpo-paper-topic-more", idleLabel);
+		more.type = "button";
+		more.setAttribute("aria-expanded", "false");
+		more.setAttribute("aria-label", tr(`显示 ${count} 个主题`, `Show ${count} ${count === 1 ? "topic" : "topics"}`));
+		more.onclick = () => {
+			const expanded = more.getAttribute("aria-expanded") !== "true";
+			more.setAttribute("aria-expanded", String(expanded));
+			if (expanded) {
+				for (const name of paper.concepts) {
+					const chip = createSpan();
+					chip.className = "cpo-paper-topic cpo-paper-topic-extra";
+					chip.textContent = name;
+					more.before(chip);
 				}
-			};
-		}
+				more.textContent = tr("收起", "Collapse");
+			} else {
+				topics.querySelectorAll(".cpo-paper-topic-extra").forEach((chip) => chip.remove());
+				more.textContent = idleLabel;
+			}
+		};
 	}
 	if (paper.retracted) {
 		el(card, "p", "cpo-side-tip", tr("⚠ OpenAlex 将这篇作品标记为已撤稿（is_retracted）。引用它之前请先核实撤稿原因。", "⚠ OpenAlex marks this work as retracted (is_retracted). Check the reason before citing it."));

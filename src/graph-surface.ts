@@ -31,7 +31,12 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	const stage = createDiv();
 	stage.className = "cpo-stage";
 	const canvas = createEl("canvas");
-	canvas.setAttribute("aria-label", options.canvasLabel);
+	// Obsidian turns aria-label into a hover tooltip; name the canvas without it.
+	const canvasDescription = createSpan();
+	canvasDescription.id = `cpo-canvas-label-${Math.random().toString(36).slice(2)}`;
+	canvasDescription.hidden = true;
+	canvasDescription.textContent = options.canvasLabel;
+	canvas.setAttribute("aria-labelledby", canvasDescription.id);
 	const empty = createDiv();
 	empty.className = "cpo-empty";
 	const emptyTitle = createEl("h2");
@@ -70,8 +75,49 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	reload.title = tr("重新加载", "Reload");
 	reload.disabled = true;
 	reload.append(createChromeIcon("refresh"));
-	zoom.append(zoomIn, zoomOut, fit, reload);
-	stage.append(canvas, empty, tooltip, nodeMenu, zoom);
+	const info = iconButton("ⓘ", tr("图谱说明", "About this graph"));
+	info.title = tr("图谱说明", "About this graph");
+	info.setAttribute("aria-expanded", "false");
+	const guide = createDiv();
+	guide.className = "cpo-graph-guide";
+	guide.id = `cpo-graph-guide-${Math.random().toString(36).slice(2)}`;
+	guide.hidden = true;
+	guide.setAttribute("role", "region");
+	guide.setAttribute("aria-label", tr("图谱说明", "About this graph"));
+	info.setAttribute("aria-controls", guide.id);
+	const heading = createEl("strong");
+	heading.textContent = tr("如何阅读图谱", "How to read this graph");
+	guide.append(heading);
+	const explanations = [
+		tr("绿色 O / 蓝色 S：来源报告有开放获取或 Sci-Hub 链接，并不表示已下载或验证全文。", "Green O / blue S: an open-access or Sci-Hub link is reported by the provider; the full text has not necessarily been downloaded or verified."),
+		tr("本地馆藏：H 表示本地已有副本，N 表示仅有笔记，? 表示匹配不明确。未记录本地副本时不显示徽标；这不代表没有全文。", "Local library: H means a local copy, N means a note only, and ? means an ambiguous match. No badge is shown when no local copy is recorded; this does not mean full text is unavailable."),
+		tr("圆圈大小：按论文年龄归一化的引用次数，较大表示每年被引更多；种子论文有最小突出尺寸。大小不代表研究质量。", "Circle size: citations normalized by paper age; larger circles have more citations per year. The seed has a minimum prominent size. Size does not measure study quality."),
+		tr("颜色：取决于所选模式。引用团模式中相同颜色表示同一组；年份模式表示发表年份；主题模式表示与种子的主题相似度；图谱模式使用主题配色。", "Color depends on the selected mode: Community groups papers by their citation network; Year shows publication year; Topic shows topic similarity to the seed; Graph uses theme colors."),
+		tr("距离：平面布局中，同组和联系较强的论文通常更近，但距离不是精确分数。相似度视图中，越靠近比较中心表示越相似；拖动仅改变角度，不改变距离或分数。分数不是概率。时间布局中，横轴为年份，纵轴为对数引用次数。", "Distance: in Planar view, papers in the same group or with stronger links tend to be closer, but spacing is not an exact score. In Similarity view, closer to the comparison paper means more similar. Dragging changes only the angle, never the distance or score. Scores are not probabilities. Timeline uses publication year horizontally and logarithmic citation counts vertically."),
+	];
+	for (const text of explanations) {
+		const paragraph = createEl("p");
+		paragraph.textContent = text;
+		guide.append(paragraph);
+	}
+	const close = iconButton(tr("关闭", "Close"), tr("关闭图谱说明", "Close graph guide"));
+	guide.append(close);
+	const setGuideOpen = (open: boolean) => {
+		guide.hidden = !open;
+		info.setAttribute("aria-expanded", String(open));
+		if (open) close.focus();
+		else info.focus();
+	};
+	info.addEventListener("click", () => setGuideOpen(guide.hidden));
+	close.addEventListener("click", () => setGuideOpen(false));
+	guide.addEventListener("keydown", event => {
+		if (event.key !== "Escape") return;
+		event.preventDefault();
+		event.stopPropagation();
+		setGuideOpen(false);
+	});
+	zoom.append(zoomIn, zoomOut, fit, reload, info);
+	stage.append(canvasDescription, canvas, empty, tooltip, nodeMenu, zoom, guide);
 	parent.append(stage);
 	return { stage, canvas, empty, emptyTitle, messageText, tooltip, nodeMenu, deleteItem, expandItem, seedItem, zoom, zoomIn, zoomOut, fit, reload };
 }

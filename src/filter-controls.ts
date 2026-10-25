@@ -57,8 +57,9 @@ export function buildLegend(
 	return counts;
 }
 
-function markRow(className: string, label: string): { row: HTMLSpanElement; n: HTMLSpanElement } {
-	const row = createSpan();
+function markRow(className: string, label: string, interactive = false): { row: HTMLElement; n: HTMLSpanElement } {
+	const row = interactive ? createEl("button") : createSpan();
+	if (row.instanceOf(HTMLButtonElement)) row.type = "button";
 	row.className = className;
 	const swatch = createEl("i");
 	swatch.setAttribute("aria-hidden", "true");
@@ -74,6 +75,7 @@ export function mountGraphKey(
 	host: HTMLElement,
 	read: () => GraphFilter,
 	write: (next: GraphFilter) => void,
+	onSeedSelect?: () => void,
 ): {
 	paintColor: (mode: LayoutMode) => void;
 	setStats: (nodes: readonly { id: string; year: number | null; isSeed?: boolean }[], edges: readonly GraphEdge[]) => void;
@@ -86,7 +88,13 @@ export function mountGraphKey(
 	const kindCounts = buildLegend(kinds, read, write);
 	const marks = createDiv();
 	marks.className = "cpo-graph-key-marks";
-	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"));
+	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"), Boolean(onSeedSelect));
+	if (seed.row.instanceOf(HTMLButtonElement) && onSeedSelect) {
+		seed.row.disabled = true;
+		seed.row.setAttribute("aria-label", tr("选择种子文献", "Select seed paper"));
+		seed.row.title = tr("选择种子文献", "Select seed paper");
+		seed.row.addEventListener("click", onSeedSelect);
+	}
 	const classic = markRow("cpo-graph-key-classic", tr("经典文献", "Seminal papers"));
 	marks.append(seed.row, classic.row);
 	const color = createSpan();
@@ -120,6 +128,7 @@ export function mountGraphKey(
 			if (el) el.textContent = String(stats.kinds[kind]);
 		}
 		seed.n.textContent = String(stats.seeds);
+		if (seed.row.instanceOf(HTMLButtonElement)) seed.row.disabled = stats.seeds === 0;
 		classic.n.textContent = String(stats.classics);
 		groupN.textContent = String(stats.groups);
 	};
