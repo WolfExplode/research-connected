@@ -84,6 +84,7 @@ export interface GraphChromeOptions {
 
 export interface GraphChrome {
 	setLayout(mode: LayoutMode): void;
+	setSimilarityAvailable(available: boolean): void;
 	setResearchVisible(visible: boolean): void;
 	setYears(min: number, max: number): void;
 	/** 新图没有任何年份时收起滑块行，避免旧范围把节点全部过滤掉。 */
@@ -296,6 +297,11 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	actions.append(tabRow, output);
 
 	return {
+		setSimilarityAvailable(available): void {
+			const button = layoutButtons.get("radial");
+			if (button) button.disabled = !available;
+			if (!available && layout === "radial") layoutButtons.get("force2d")?.click();
+		},
 		setLayout(mode: LayoutMode): void {
 			layoutButtons.get(mode)?.click();
 		},

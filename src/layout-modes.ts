@@ -16,13 +16,13 @@ export function defaultColorMode(layout: LayoutMode): ColorMode {
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 	temporal: tr("时间", "Timeline"),
-	radial: tr("放射", "Radial"),
+	radial: tr("相似度", "Similarity"),
 	force2d: tr("平面", "Planar"),
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {
 	temporal: tr("横轴年份，纵轴被引。", "Year on the horizontal axis; citations on the vertical axis."),
-	radial: tr("越近越相似。", "Closer nodes are more similar."),
+	radial: tr("越靠近中心越相似。拖动仅改变角度，不改变分数或距离。", "Closer to the center means more similar. Drag around an orbit without changing the score or distance."),
 	force2d: tr("同组相近，边强则近。", "Papers in the same group and with stronger links are closer."),
 };
 
@@ -108,7 +108,18 @@ function placeTemporal(placed: PlacedNode[], nodes: readonly PaperNode[]): Place
 	});
 }
 
-/** Seed at the origin. Radius falls as similarity to the seed rises. Angle follows year. */
+/** Missing scores have no place on the similarity scale; zero is a valid score. */
+export function similarityRadius(score: number | undefined): number | null {
+	return score === undefined || !Number.isFinite(score) ? null : 78 + (1 - Math.min(1, Math.max(0, score))) * 200;
+}
+
+/** Project a drag onto its orbit, retaining the previous angle at the exact center. */
+export function orbitPosition(radius: number, x: number, y: number, previous: { x: number; y: number }): { x: number; y: number } {
+	const angle = Math.hypot(x, y) > 0.001 ? Math.atan2(y, x) : Math.atan2(previous.y, previous.x);
+	return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
+/** Seed at the origin. Angle is initially distributed by year, then freely rotatable. */
 function placeRadial(
 	placed: PlacedNode[],
 	nodes: readonly PaperNode[],
@@ -120,10 +131,14 @@ function placeRadial(
 		.slice()
 		.sort((a, b) => (a.year ?? 0) - (b.year ?? 0) || a.id.localeCompare(b.id));
 	const angleOf = new Map(others.map((node, index) => [node.id, (index / Math.max(1, others.length)) * Math.PI * 2]));
+	let unknown = 0;
 	return placed.map((node) => {
 		if (node.id === seedId) return { ...node, x: 0, y: 0, z: 0 };
-		const similarity = Math.min(1, Math.max(0, seedScore.get(node.id) ?? 0));
-		const radius = 78 + (1 - similarity) * 200;
+		const radius = similarityRadius(seedScore.get(node.id));
+		if (radius === null) {
+			const index = unknown++;
+			return { ...node, x: 360 + Math.floor(index / 8) * 60, y: -160 + (index % 8) * 45, z: 0 };
+		}
 		const angle = angleOf.get(node.id) ?? 0;
 		return { ...node, x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: 0 };
 	});

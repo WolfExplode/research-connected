@@ -3,7 +3,7 @@ import { classicInfluence } from "./aggregates";
 import { communityColor, detectCommunities } from "./communities";
 import { focusNodes } from "./graph-filter";
 import { authorYear, citationLabelAlpha } from "./labels";
-import { placeLayout, type ColorMode, type LayoutMode } from "./layout-modes";
+import { orbitPosition, placeLayout, similarityRadius, type ColorMode, type LayoutMode } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
@@ -128,7 +128,7 @@ export class SimilarityMap {
 		canvas.tabIndex = 0;
 		// Optional-call: the headless verify script stubs a bare canvas object.
 		canvas.setAttribute?.("role", "application");
-		if (!canvas.getAttribute?.("aria-label")) {
+		if (!canvas.getAttribute?.("aria-label") && !canvas.getAttribute?.("aria-labelledby")) {
 			canvas.setAttribute?.("aria-label", tr("论文相似度图谱：方向键平移，+/- 缩放，0 或 F 适配", "Paper similarity graph: arrow keys to pan, +/- to zoom, 0 or F to fit"));
 		}
 		canvas.addEventListener("pointerdown", this.onPointerDown);
@@ -168,7 +168,7 @@ export class SimilarityMap {
 		this.classicGlow = classicInfluence(nodes, edges);
 		this.ensurePulse();
 		const host = nearId ? prev.get(nearId) : null;
-		const placed = reflow || !host
+		const placed = reflow || !host || this.layoutMode === "radial"
 			? new Map(placeLayout(this.layoutMode, nodes, edges, seedScore).map((node) => [node.id, node]))
 			: null;
 		const norms = nodes.map((node) => yearNormalizedCitations(node.citedByCount, node.year));
@@ -178,8 +178,13 @@ export class SimilarityMap {
 			const old = prev.get(node.id);
 			const at = placed?.get(node.id);
 			const parked = host && !old ? parkNear(host.x, host.y, node.id) : null;
-			const x = reflow ? at?.x ?? 0 : old?.x ?? parked?.x ?? at?.x ?? 0;
-			const y = reflow ? at?.y ?? 0 : old?.y ?? parked?.y ?? at?.y ?? 0;
+			let x = reflow ? at?.x ?? 0 : old?.x ?? parked?.x ?? at?.x ?? 0;
+			let y = reflow ? at?.y ?? 0 : old?.y ?? parked?.y ?? at?.y ?? 0;
+			if (this.layoutMode === "radial") {
+				const radius = similarityRadius(seedScore.get(node.id));
+				const point = node.isSeed ? { x: 0, y: 0 } : radius === null ? at ?? { x: 360, y: 0 } : orbitPosition(radius, x, y, { x, y });
+				x = point.x; y = point.y;
+			}
 			return {
 				...node,
 				x,
@@ -228,6 +233,10 @@ export class SimilarityMap {
 	}
 
 	setLayout(mode: LayoutMode): void {
+		if (this.simFrame !== null) this.caf(this.simFrame);
+		this.simFrame = null;
+		this.simAlpha = 0;
+		this.dragging = null;
 		this.layoutMode = mode;
 		const canvasStyles = typeof getComputedStyle === "function" ? getComputedStyle(this.canvas) : null;
 		this.bgStart = themeColor(canvasStyles?.getPropertyValue("--cpo-canvas-bg-start") ?? "", "#ffffff");
@@ -271,6 +280,11 @@ export class SimilarityMap {
 
 	private refreshFocus(): void {
 		const id = this.hoverId ?? this.selectedId;
+		if (this.layoutMode === "radial") {
+			const seed = this.nodes.find(node => node.isSeed);
+			this.focus = id && id !== seed?.id ? new Set([id, ...(seed ? [seed.id] : [])]) : null;
+			return;
+		}
 		this.focus = id
 			? focusNodes(id, this.edges, (edge) => this.kindVisible[relationKind(edge)])
 			: null;
@@ -325,10 +339,11 @@ export class SimilarityMap {
 	}
 
 	private contentBounds(): { minX: number; minY: number; maxX: number; maxY: number } {
-		let minX = Infinity;
-		let minY = Infinity;
-		let maxX = -Infinity;
-		let maxY = -Infinity;
+		const guides = this.layoutMode === "radial" && this.nodes.some(node => node.isSeed);
+		let minX = guides ? -300 : Infinity;
+		let minY = guides ? -310 : Infinity;
+		let maxX = guides ? 300 : -Infinity;
+		let maxY = guides ? 300 : -Infinity;
 		for (const node of this.nodes) {
 			if (!node.shown) continue;
 			minX = Math.min(minX, node.x - node.radius);
@@ -590,7 +605,7 @@ export class SimilarityMap {
 		this.moved = false;
 		this.downX = event.clientX;
 		this.downY = event.clientY;
-		if (hit && !hit.isSeed) {
+		if (hit && !hit.isSeed && (this.layoutMode !== "radial" || similarityRadius(this.seedScore.get(hit.id)) !== null)) {
 			const world = this.screenToWorld(local.x, local.y);
 			this.dragging = { kind: "node", id: hit.id, dx: hit.x - world.x, dy: hit.y - world.y };
 		} else {
@@ -667,8 +682,11 @@ export class SimilarityMap {
 			const node = this.nodes.find((item) => item.id === dragging.id);
 			if (node) {
 				const world = this.screenToWorld(local.x, local.y);
-				node.x = world.x + dragging.dx;
-				node.y = world.y + dragging.dy;
+				const x = world.x + dragging.dx, y = world.y + dragging.dy;
+				const radius = this.layoutMode === "radial" ? similarityRadius(this.seedScore.get(node.id)) : null;
+				const point = radius === null ? { x, y } : orbitPosition(radius, x, y, node);
+				node.x = point.x;
+				node.y = point.y;
 				this.reheat(0.55);
 			}
 			this.setCursor("grabbing");
@@ -701,6 +719,7 @@ export class SimilarityMap {
 		if (!dragging || wasDrag) {
 			this.setCursor("grab");
 			if (wasDrag && dragging?.kind === "node") this.reheat(0.32);
+			this.draw();
 			return;
 		}
 		if (dragging.kind === "node") {
@@ -719,6 +738,7 @@ export class SimilarityMap {
 			const p = this.screenToWorld(local.x, local.y);
 			let closest: GraphEdge | null = null, distance = 7 / this.k;
 			for (const edge of this.edges) {
+				if (this.layoutMode === "radial") break;
 				if (!this.kindVisible[relationKind(edge)]) continue;
 				const a = this.nodes.find(n => n.id === edge.source), b = this.nodes.find(n => n.id === edge.target);
 				if (!a || !b || !this.isShown(a) || !this.isShown(b)) continue;
@@ -823,7 +843,10 @@ export class SimilarityMap {
 			return;
 		}
 		this.tooltip.hidden = false;
-		this.tooltip.textContent = node.title;
+		const radius = similarityRadius(this.seedScore.get(node.id));
+		this.tooltip.textContent = this.layoutMode === "radial"
+			? `${node.title}\n${node.isSeed ? tr("比较中心", "Comparison paper") : radius === null ? tr("数据不足", "Insufficient data") : tr(`相似度 ${this.seedScore.get(node.id)!.toFixed(2)}`, `Similarity ${this.seedScore.get(node.id)!.toFixed(2)}`)}`
+			: node.title;
 		const width = this.tooltip.offsetWidth || 180;
 		const height = this.tooltip.offsetHeight || 32;
 		const left = x + width + 16 > this.cssWidth ? Math.max(8, x - width - 12) : x + 14;
@@ -890,10 +913,12 @@ export class SimilarityMap {
 		ctx.fillStyle = background;
 		ctx.fillRect(0, 0, width, height);
 		if (this.layoutMode === "temporal") this.drawYearAxis(ctx);
+		if (this.layoutMode === "radial") this.drawSimilarityGuides(ctx);
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
 		ctx.lineCap = "round";
 		for (const edge of this.edges) {
+			if (this.layoutMode === "radial") break;
 			const a = byId.get(edge.source);
 			const b = byId.get(edge.target);
 			if (!a || !b || !a.shown || !b.shown) continue;
@@ -932,6 +957,36 @@ export class SimilarityMap {
 			if (node.shown) this.drawNode(ctx, node);
 		}
 		this.drawLabels(ctx);
+	}
+
+	private drawSimilarityGuides(ctx: CanvasRenderingContext2D): void {
+		if (!this.nodes.some(node => node.isSeed)) return;
+		ctx.save();
+		ctx.font = `11px ${this.fontFamily}`;
+		ctx.textAlign = "center";
+		ctx.strokeStyle = this.graphText;
+		ctx.fillStyle = this.graphText;
+		ctx.lineWidth = 1;
+		for (const score of [1, 0.5, 0]) {
+			const radius = similarityRadius(score)! * this.k;
+			ctx.globalAlpha = 0.12;
+			ctx.beginPath(); ctx.arc(this.tx, this.ty, radius, 0, Math.PI * 2); ctx.stroke();
+		}
+		const active = this.nodes.find(node => node.id === (this.dragging?.kind === "node" ? this.dragging.id : this.hoverId ?? this.selectedId));
+		if (active && !active.isSeed && active.shown && similarityRadius(this.seedScore.get(active.id)) !== null) {
+			ctx.globalAlpha = 0.4;
+			ctx.beginPath(); ctx.moveTo(this.tx, this.ty); ctx.lineTo(active.x * this.k + this.tx, active.y * this.k + this.ty); ctx.stroke();
+			if (this.dragging?.kind === "node") {
+				ctx.setLineDash([4, 5]);
+				ctx.beginPath(); ctx.arc(this.tx, this.ty, similarityRadius(this.seedScore.get(active.id))! * this.k, 0, Math.PI * 2); ctx.stroke();
+			}
+		}
+		ctx.globalAlpha = 0.75;
+		if (this.nodes.some(node => !node.isSeed && similarityRadius(this.seedScore.get(node.id)) === null)) {
+			ctx.textAlign = "left";
+			ctx.fillText(tr("数据不足", "Insufficient data"), 335 * this.k + this.tx, -195 * this.k + this.ty);
+		}
+		ctx.restore();
 	}
 
 	private drawYearAxis(ctx: CanvasRenderingContext2D): void {
@@ -1016,9 +1071,11 @@ export class SimilarityMap {
 			ctx.lineWidth = 1;
 			ctx.strokeStyle = "rgba(51, 57, 67, 0.45)";
 			ctx.stroke();
-		} else if (node.id === this.selectedId) {
+		}
+		if (node.id === this.selectedId) {
 			ctx.beginPath();
-			ctx.arc(x, y, radius + 3, 0, Math.PI * 2);
+			// 种子节点已有两圈外环，选中环要画在它们外面
+			ctx.arc(x, y, radius + (node.isSeed ? 10.5 : 3), 0, Math.PI * 2);
 			ctx.lineWidth = 2;
 			ctx.strokeStyle = this.graphNodeFocused;
 			ctx.stroke();
@@ -1035,7 +1092,9 @@ export class SimilarityMap {
 				ctx.fillStyle = "#ffffff"; ctx.fillText(text, x + dx, y + dy);
 			};
 			const state = library.local.state;
-			badge(radius, -radius, state === "held" ? "H" : state === "note-only" ? "N" : state === "ambiguous" ? "?" : "−", state === "held" ? "#197348" : state === "note-only" ? "#8f6100" : "#59616c");
+			if (state === "held" || state === "note-only" || state === "ambiguous") {
+				badge(radius, -radius, state === "held" ? "H" : state === "note-only" ? "N" : "?", state === "held" ? "#197348" : state === "note-only" ? "#8f6100" : "#59616c");
+			}
 			if (library.providers.oa?.state === "available") badge(-radius, radius, "O", "#197348");
 			if (library.providers.scihub?.state === "available") badge(radius, radius, "S", "#345e9e");
 			ctx.restore();
@@ -1060,6 +1119,7 @@ export class SimilarityMap {
 		});
 		this.maxWeight = this.edges.reduce((max, edge) => Math.max(max, edge.weight), 0.001);
 		this.captureStructure();
+		this.refreshFocus();
 		if (resetView) {
 			this.selectedId = this.nodes.find((node) => node.isSeed)?.id ?? null;
 			this.hoverId = null;
@@ -1102,13 +1162,14 @@ export class SimilarityMap {
 		const place = (node: DrawNode, maxWidth: number, alpha: number): void => {
 			const cx = node.x * this.k + this.tx;
 			const cy = node.y * this.k + this.ty;
-			const y = cy;
-			const text = fitText(ctx, authorYear(node), maxWidth);
+			const comparison = this.layoutMode === "radial" && node.isSeed;
+			const y = comparison ? cy + node.radius + 18 : cy;
+			const text = fitText(ctx, comparison ? `${tr("比较中心", "Comparing with")}: ${node.title}` : authorYear(node), comparison ? 240 : maxWidth);
 			const width = ctx.measureText(text).width;
 			const rightX = cx + node.radius + 6;
 			const leftX = cx - node.radius - 6 - width;
-			const anchor = rightX + width <= this.cssWidth - 4 || leftX < 4 ? "left" : "right";
-			const x = anchor === "left" ? rightX : leftX;
+			const anchor = comparison || rightX + width <= this.cssWidth - 4 || leftX < 4 ? "left" : "right";
+			const x = comparison ? cx - width / 2 : anchor === "left" ? rightX : leftX;
 			const box = { x, y: y - 8, w: width, h: 16 };
 			const must = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
 			if (!must && overlaps(box, boxes)) return;
@@ -1127,6 +1188,7 @@ export class SimilarityMap {
 		for (const node of this.nodes) {
 			if (!node.shown) continue;
 			const must = node.isSeed || node.id === this.selectedId || node.id === this.hoverId;
+			if (this.layoutMode === "radial" && !must) continue;
 			const alpha = must ? 1 : citationLabelAlpha(rankOf.get(node.id) ?? 99, this.k);
 			if (alpha <= 0.02) continue;
 			place(node, must || (rankOf.get(node.id) ?? 99) <= 7 ? 168 : 140, alpha);
