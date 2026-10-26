@@ -1,6 +1,7 @@
 import { tr } from "./i18n";
 import type { GetJson } from "./openalex";
 import { cleanAbstractText, normalizeDoi } from "./paper";
+import { limitedRequest } from "./provider-limits";
 
 export interface OpenCitationRow {
 	oci?: string;
@@ -162,7 +163,7 @@ export class SemanticScholarClient {
 				const url = new URL(base);
 				url.searchParams.set("fields", fieldSet);
 				try {
-					json = await queuedRequest(url.toString(), () => this.postJson!(url.toString(), {
+					json = await limitedRequest(url.toString(), () => this.postJson!(url.toString(), {
 						headers: {
 							Accept: "application/json",
 							"Content-Type": "application/json",
@@ -330,26 +331,13 @@ function pids(value: string | undefined): string[] {
 	return [...value.matchAll(/\bdoi:([^\s;]+)/gi)].map(match => match[1]!.toLowerCase());
 }
 
-const queues = new Map<string, Promise<unknown>>();
 const responses = new Map<string, { at: number; result: Promise<unknown> }>();
-
-/** All clients and HTTP methods share a host queue, including retries and fallbacks. */
-function queuedRequest(url: string, request: () => Promise<unknown>): Promise<unknown> {
-	const origin = new URL(url).origin;
-	const previous = queues.get(origin) ?? Promise.resolve();
-	const result = previous.catch(() => {}).then(async () => {
-		await pause(new URL(url).hostname === "api.semanticscholar.org" ? 1100 : 400);
-		return request();
-	});
-	queues.set(origin, result);
-	return result;
-}
 
 async function cachedGet(get: GetJson, url: string, init: { headers: Record<string, string> }): Promise<unknown> {
 	const key = url + JSON.stringify(init.headers);
 	const cached = responses.get(key);
 	if (cached && Date.now() - cached.at < 300_000) return cached.result;
-	const result = queuedRequest(url, () => get(url, init));
+	const result = limitedRequest(url, () => get(url, init));
 	if (responses.size >= 200) responses.delete(responses.keys().next().value!);
 	responses.set(key, { at: Date.now(), result });
 	try { return await result; } catch (error) { responses.delete(key); throw error; }

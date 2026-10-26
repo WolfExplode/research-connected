@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-identity";
 import { verifyEvidence } from "./verify-evidence";
 import { verifyS2RateLimit } from "./verify-s2-rate-limit";
+import { verifyProviderLimits } from "./verify-provider-limits";
 import { verifyDoiRecovery } from "./verify-doi-recovery";
 import { verifyComparison } from "./verify-comparison";
 import { verifyConnections } from "./verify-connections";
@@ -855,6 +856,7 @@ function diversityChecks(): void {
 async function main(): Promise<void> {
 	await verifyWorkflow();
 	await verifyS2RateLimit();
+	await verifyProviderLimits();
 	unit();
 	await verifyWorkIdentityPipeline();
 	semanticChecks();

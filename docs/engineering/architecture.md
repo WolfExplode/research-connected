@@ -19,6 +19,7 @@ and sizing separate. There is no separate backend owned by this plugin.
 | Reading changes and final view saves | src/workflow/reading-state.ts, src/workflow/project-save.ts |
 | Text/citation comparison and retrieval UI | src/paper-comparison.ts, src/similarity-search.ts, src/similarity-explorer.ts, src/workflow/literature-search.ts |
 | Scholarly source adapters | src/openalex.ts, src/citation-sources.ts, src/obsidian-http.ts |
+| Per-service request lanes and shared rate-limit pauses | src/provider-limits.ts, src/provider-pause-file.ts |
 | Vault-owned paper actions and bookmark migration | src/paper-library.ts, src/vault-paper-library.ts, src/workflow/bookmark-migration.ts |
 | Literature notes and optional host integration | src/vault-note.ts, src/library-bridge.ts |
 | Question-scoped discovery | src/question-workspace.ts, src/discovery-graph.ts |
@@ -100,6 +101,19 @@ unchanged graph avoids computing a layout whose coordinates would be discarded. 
 animation pauses while the document is hidden or reduced motion is requested; interaction state
 remains usable. Large initial planar layouts still run synchronously; profile browser long tasks
 before introducing a worker or changing layout semantics.
+
+Every scholarly request goes through `limitedRequest`: one lane per service (OpenAlex, Semantic
+Scholar, Crossref, OpenCitations, Europe PMC), shared by panes, embeds and clients.
+- **Spacing and concurrency:** each lane spaces its requests and bounds how many run at once; an
+  idle lane starts a request in the same tick.
+- **Retries:** 429, 502, 503 and 504 are retried up to three times, waiting for Retry-After or
+  backing off 1, 2 and 4 seconds.
+- **Pauses:** a lasting 429 pauses that service (OpenAlex 402, a spent daily budget, pauses it
+  for an hour).
+- **Sharing pauses:** when the vault sits inside the research repository, pauses go to
+  `.cache/research/providers/<service>.json`. The research CLI reads and writes the same files,
+  so one rate limit stops both processes. The build allows `fs` and `path` for this; the plugin
+  is desktop-only.
 
 PaperLibrary is the shared paper-action interface. The Obsidian adapter finds or creates notes,
 reads the vault-wide bookmark flag, delegates acquisition to the optional bridge, and shares

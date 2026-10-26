@@ -1,6 +1,9 @@
 import { vaultPaperLibrary, invalidatePaperLibrary } from "./vault-paper-library";
 import { migrateProjectBookmarks } from "./workflow/bookmark-migration";
 import { addIcon, Notice, Plugin } from "obsidian";
+import { dirname } from "path";
+import { setProviderPauseStore } from "./provider-limits";
+import { providerPauseFiles } from "./provider-pause-file";
 import { LOGO_ICON, LOGO_SVG } from "./logo";
 import { tr } from "./i18n";
 import { VIEW_TYPE } from "./constants";
@@ -26,6 +29,12 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		// The research repository holds the vault; until a setting names it, its parent folder is checked.
+		const base = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+		if (base) {
+			try { setProviderPauseStore(providerPauseFiles(dirname(base))); } catch { /* In-memory pauses still apply. */ }
+			this.register(() => setProviderPauseStore(null));
+		}
 
 		// Main-area tab. The graph pane is the product, not a sidebar card list.
 		this.registerView(VIEW_TYPE, (leaf) => new ConnectedPapersView(leaf, this));

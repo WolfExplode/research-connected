@@ -1,6 +1,7 @@
 import { tr } from "./i18n";
 import { requestUrl } from "obsidian";
 import { explainStatus, OpenAlexError, type GetJson } from "./openalex";
+import { retryAfterMs } from "./provider-limits";
 
 /** Non-OpenAlex hosts routed through obsidianGetJson, so their errors name the right service. */
 const SERVICE_NAME: Record<string, string> = {
@@ -43,7 +44,7 @@ export const obsidianGetJson: GetJson = async (url, init) => {
 		throw new OpenAlexError(explainGet(url, undefined));
 	}
 	if (response.status >= 400) {
-		throw new OpenAlexError(explainGet(url, response.status), response.status);
+		throw new OpenAlexError(explainGet(url, response.status), response.status, retryAfter(response.headers));
 	}
 	try {
 		const json: unknown = response.json;
@@ -70,7 +71,7 @@ export const obsidianPostJson = async (
 	} catch {
 		throw new OpenAlexError(tr(`无法连接 ${service}。`, `Could not connect to ${service}.`));
 	}
-	if (response.status >= 400) throw new OpenAlexError(tr(`${service} 请求失败（HTTP ${response.status}）。`, `${service} request failed (HTTP ${response.status}).`), response.status);
+	if (response.status >= 400) throw new OpenAlexError(tr(`${service} 请求失败（HTTP ${response.status}）。`, `${service} request failed (HTTP ${response.status}).`), response.status, retryAfter(response.headers));
 	try {
 		const json: unknown = response.json;
 		return json;
@@ -86,6 +87,12 @@ function postServiceName(url: string): string {
 	} catch {
 		return tr("LLM 服务", "LLM service");
 	}
+}
+
+/** Header names arrive in whatever case the server used. */
+function retryAfter(headers: Record<string, string> | undefined): number | undefined {
+	const entry = Object.entries(headers ?? {}).find(([name]) => name.toLowerCase() === "retry-after");
+	return retryAfterMs(entry?.[1]);
 }
 
 /** requestUrl cannot physically abort; timeout bounds waiting and callers discard stale results. */

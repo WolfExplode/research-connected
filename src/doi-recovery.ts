@@ -1,5 +1,6 @@
 import type { GetJson } from "./openalex";
 import { normalizeDoi } from "./paper";
+import { limitedRequest } from "./provider-limits";
 import type { PaperNode } from "./types";
 import { paperDois } from "./work-identity";
 
@@ -75,7 +76,7 @@ export function applyRecoveredDoi(paper: PaperNode, result: DoiRecovery | null):
 export async function recoverDoi(paper: PaperNode, getJson: GetJson, contactEmail: string): Promise<DoiRecovery> {
 	const candidates: DoiCandidate[] = [];
 	let failure: unknown;
-	const get = (url: URL) => getJson(url.href, { headers: { Accept: "application/json" } });
+	const get = (url: URL) => limitedRequest(url.href, () => getJson(url.href, { headers: { Accept: "application/json" } }));
 	try {
 		const url = new URL("https://api.crossref.org/works");
 		url.searchParams.set("query.bibliographic", [paper.title, firstAuthor(paper), paper.year, paper.venue, paper.bibliography?.volume, paper.bibliography?.firstPage].filter(Boolean).join(" "));

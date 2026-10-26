@@ -25,6 +25,8 @@ export async function verifyCitationComparison(root: HTMLElement, seed: PaperNod
 	try {
 		paint(); check(calls === 0, "Text mode must not request citation evidence");
 		kind = "citations"; paint(); paint();
+		// The shared OpenAlex lane may space this request after earlier checks' requests.
+		for (let i = 0; i < 40 && calls === 0; i++) await new Promise(resolve => setTimeout(resolve, 5));
 		check(Number(calls) === 1 && explorer.status?.text.includes("Loading citation data"), "Citations mode must load displayed library references once and expose pending state");
 		kind = "text"; paint(); release();
 		for (let i = 0; i < 30 && paints === 0; i++) await new Promise(resolve => setTimeout(resolve, 5));
@@ -46,9 +48,11 @@ export async function verifyCitationComparison(root: HTMLElement, seed: PaperNod
 		requests++;
 		if (new URL(url).searchParams.has("filter")) return { results: [{ id: "https://openalex.org/W2", referenced_works: ["https://openalex.org/W99"] }] };
 		active++; maximum = Math.max(maximum, active);
-		await new Promise(resolve => setTimeout(resolve, 5)); active--;
+		// Long enough to overlap despite the OpenAlex lane's spacing between starts.
+		await new Promise(resolve => setTimeout(resolve, 300)); active--;
 		if (url.includes("absent")) throw new OpenAlexError("Not indexed", 404);
-		if (url.includes("retry") && retryFailure) throw new OpenAlexError("Unavailable", 503);
+		// Retry-After 0: the lane's retries run at once, and the paper still ends as a failure.
+		if (url.includes("retry") && retryFailure) throw new OpenAlexError("Unavailable", 503, 0);
 		return { id: "https://openalex.org/W8", referenced_works: ["https://openalex.org/W99"] };
 	}, { apiKey: "", contactEmail: "" }));
 	const candidates = ["W2", "W3", "absent", "retry", "other", "last"].map(id => ({ ...local, id,

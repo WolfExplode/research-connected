@@ -11,13 +11,13 @@ const domain = new Set([
 	"layout-modes.ts", "relation.ts", "similarity.ts", "text-similarity.ts",
 	"topic-similarity.ts", "types.ts", "discovery-graph.ts", "question-workspace.ts",
 ]);
-const adapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts", "vault-note.ts"]);
+const adapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts", "vault-note.ts", "provider-limits.ts", "provider-pause-file.ts"]);
 const ui = new Set([
 	"app.ts", "detail-cards.ts", "embed-block.ts", "embed-mount.ts", "filter-controls.ts",
 	"graph-chrome.ts", "main.ts", "map-canvas.ts", "settings.ts",
 	"sidebar-resize.ts", "view.ts", "visual.ts", "discovery-view.ts", "library-bridge.ts",
 ]);
-const httpAdapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts"]);
+const httpAdapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts", "provider-limits.ts", "provider-pause-file.ts"]);
 const importPattern = /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g;
 const domGlobal = /\b(?:document|window|HTMLElement|HTMLCanvasElement|CanvasRenderingContext2D|requestAnimationFrame)\b/;
 

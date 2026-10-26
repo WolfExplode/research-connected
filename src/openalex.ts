@@ -1,5 +1,6 @@
 import { tr } from "./i18n";
 import { OPENALEX_API } from "./constants";
+import { limitedRequest, ProviderPausedError } from "./provider-limits";
 
 export interface RawWork {
 	id?: string;
@@ -49,11 +50,14 @@ const DETAIL_SELECT = "id,referenced_works,abstract_inverted_index";
 
 export class OpenAlexError extends Error {
 	readonly status?: number;
+	/** Milliseconds the service asked callers to wait (Retry-After), when it said. */
+	readonly retryAfter?: number;
 
-	constructor(message: string, status?: number) {
+	constructor(message: string, status?: number, retryAfter?: number) {
 		super(message);
 		this.name = "OpenAlexError";
 		this.status = status;
+		this.retryAfter = retryAfter;
 	}
 }
 
@@ -266,9 +270,9 @@ export class OpenAlexClient {
 		const email = validEmail(this.auth.contactEmail);
 		if (email) url.searchParams.set("mailto", email);
 		try {
-			return await this.getJson(url.toString(), { headers: this.headers() });
+			return await limitedRequest(url.toString(), () => this.getJson(url.toString(), { headers: this.headers() }));
 		} catch (error) {
-			if (error instanceof OpenAlexError) throw error;
+			if (error instanceof OpenAlexError || error instanceof ProviderPausedError) throw error;
 			throw new OpenAlexError(explainStatus(undefined));
 		}
 	}
