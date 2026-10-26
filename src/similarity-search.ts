@@ -15,7 +15,7 @@ function openalex(paper: PaperNode): string {
 
 /** Retrieval precedes scoring; citation data never changes the text-ranked candidate membership. */
 export function searchSimilarity(base: SimilarityGraph, library: readonly LibraryTextPaper[], scope: SearchScope,
-	limit: number, evidence: readonly StoredTextEvidence[] = [], center?: PaperNode) {
+	limit: number, evidence: readonly StoredTextEvidence[] = [], center?: PaperNode, externalPapers?: readonly PaperNode[]) {
 	const requested = center ?? base.nodes.find(paper => paper.isSeed);
 	if (!requested) throw new Error("Choose a comparison paper");
 	const remoteSeed = !requested.recordsSeparated
@@ -37,7 +37,7 @@ export function searchSimilarity(base: SimilarityGraph, library: readonly Librar
 	};
 	add({ ...seed, isSeed: true });
 	// Prefer external identities/metadata when merging, retaining local evidence and note paths.
-	const external = [...base.nodes, ...base.catalog];
+	const external = externalPapers ?? [...base.nodes, ...base.catalog];
 	const remoteByDoi = new Map<string, PaperNode>();
 	const remoteById = new Map<string, PaperNode>();
 	for (const paper of external) if (doi(paper) && !paper.recordsSeparated && !remoteByDoi.has(doi(paper))) remoteByDoi.set(doi(paper), paper);
@@ -49,7 +49,8 @@ export function searchSimilarity(base: SimilarityGraph, library: readonly Librar
 		if (scope === "external" && !canonical.has(key(remote ?? row.paper))) continue;
 		const id = add(matchedSeed ? seed : remote ?? row.paper);
 		notes.set(id, [...(notes.get(id) ?? []), row.note]);
-		stored.set(id, { id, summary: row.paper.abstract, vector: row.vector });
+		const prior = stored.get(id);
+		stored.set(id, { id, summary: row.paper.abstract || prior?.summary, vector: row.vector ?? prior?.vector });
 		const node = all.get(id)!;
 		if (!node.abstract) node.abstract = row.paper.abstract;
 		if (row.vector) vectors.set(id, row.vector);

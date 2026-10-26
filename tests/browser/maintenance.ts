@@ -1,3 +1,4 @@
+import { verifyPaperLibrary } from "./paper-library";
 import { verifyInfoBar } from "./info-bar";
 import { mountGraphApp, type AppDeps, type GraphAppHandle } from "../../src/app";
 import { mountEmbed } from "../../src/embed-mount";
@@ -80,6 +81,8 @@ async function verify(): Promise<void> {
 		check(Number(restored.value) === selectedYear && root.querySelector(".cpo-scrub-readout")?.textContent === `Through ${selectedYear}`, "restored year control must match the saved filter");
 
 		button('[data-layout="radial"]').click();
+		const method = root.querySelector<HTMLSelectElement>('[aria-label="Explore method"]')!;
+		method.value = "similar"; method.dispatchEvent(new Event("change"));
 		await until(() => root.querySelector(".cpo-status")?.textContent?.includes("temporary library failure") ?? false);
 		const retry = Array.from(root.querySelectorAll<HTMLButtonElement>(".cpo-similarity-search button")).find(item => item.textContent === "Retry library search")!;
 		check(!retry.hidden && libraryCalls === 1, "failed library retrieval must offer an inline retry");
@@ -87,6 +90,7 @@ async function verify(): Promise<void> {
 		await until(() => libraryCalls === 2 && !root.querySelector(".cpo-similarity-search")?.getAttribute("aria-busy")?.includes("true"));
 		check(retry.hidden && root.querySelector(".cpo-status")?.textContent?.includes("No comparison papers"), "retry must recover and distinguish an empty result");
 		button('[data-layout="force2d"]').click();
+		method.value = "citation"; method.dispatchEvent(new Event("change"));
 
 		const originalSeed = settings.researchProjects.W1!.snapshot!.nodes.find(paper => paper.isSeed)!;
 		const other = { ...originalSeed, id: "W9", title: "Paper in another project", doiUrl: "https://doi.org/10.1234/other" };
@@ -142,6 +146,7 @@ async function verify(): Promise<void> {
 		verifyCanvasLifecycle(root, originalSeed);
 		await verifyCitationComparison(root, originalSeed);
 		await verifyInfoBar(root);
+		await verifyPaperLibrary(root);
 	} finally { handle.destroy(); }
 	document.body.textContent = "PASS: reading compensation, close-time saves, timeline restore, library retry, saved-paper navigation, pane/embed widths, light/dark tokens, animation policy and document listener cleanup";
 	document.body.dataset.result = "passed";

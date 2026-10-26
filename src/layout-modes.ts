@@ -34,8 +34,8 @@ export function defaultColorMode(layout: LayoutMode): ColorMode {
 
 export const LAYOUT_LABEL: Record<LayoutMode, string> = {
 	temporal: tr("时间", "Timeline"),
-	radial: tr("相似度", "Similarity"),
-	force2d: tr("平面", "Planar"),
+	radial: tr("相似度图", "Similarity map"),
+	force2d: tr("网络", "Network"),
 };
 
 export const LAYOUT_HINT: Record<LayoutMode, string> = {

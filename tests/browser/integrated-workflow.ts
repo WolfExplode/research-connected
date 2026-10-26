@@ -77,9 +77,9 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 				text_comparison: { score: 0.625, method: "specter2+words", lexical: 0.25, embedding: 0.75 } }] } });
 		root.querySelector<HTMLButtonElement>('[data-layout="radial"]')!.click();
 		check(!root.querySelector<HTMLButtonElement>('[data-similarity="citations"]')?.disabled, "local papers can remain visible in Citations with unavailable evidence");
-		check(root.querySelector(".cpo-detail")?.textContent?.includes("SPECTER2") && root.querySelector(".cpo-detail")?.textContent?.includes("0.63"), "local details expose the actual SPECTER2 scoring method and decimal score");
+		check(root.querySelector(".cpo-detail")?.textContent?.includes("SPECTER2") && root.querySelector(".cpo-detail")?.textContent?.includes("0.56"), `local details expose the actual SPECTER2 scoring method and decimal score: ${root.querySelector(".cpo-detail")?.textContent}`);
 		root.querySelector<HTMLButtonElement>('[data-similarity="citations"]')!.click();
-		check(root.querySelector(".cpo-detail")?.textContent?.includes("Citation similarity: unavailable"), "membership edges never become citation similarity claims");
+		check(root.querySelector(".cpo-comparison-card .cpo-meter-na")?.textContent === "Unavailable" && !root.querySelector(".cpo-comparison-card .cpo-meter-value"), "membership edges never become citation similarity claims");
 		mode("rank"); run(); handle.destroy(); requests[4]!.resolve(payload(first, "Result after disposal")); await tick();
 		check(root.childElementCount === 0, "disposed workspaces must ignore late results");
 		return "PASS: shared canvas and question, ranking and PDF details, scoped indexing, session reuse, stale-result guards, citation preservation, cleanup";

@@ -1,3 +1,5 @@
+import type { PaperLibrary } from "./paper-library";
+import { createLiteratureSearch } from "./workflow/literature-search";
 import { createInfoBar, graphInfo } from "./info-bar";
 import { setHoverHint } from "./hover-hint";
 import { readingChangePending, saveReadingState } from "./workflow/reading-state";
@@ -41,6 +43,7 @@ export interface EmbedDeps {
 	getJson: GetJson;
 	postJson?: PostJson;
 	openExternal: (url: string) => void;
+	paperLibrary?: PaperLibrary;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
 	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
@@ -233,6 +236,17 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let storedTextGraph: SimilarityGraph | null = null;
 	surface.distanceScale.value = saved?.distanceScale ?? "relative";
 	let scopedActive = false;
+	let similaritySearch = false;
+	const exploreTools = createDiv({ cls: "cpo-embed-explore" }); bar.append(exploreTools);
+	const method = createEl("select"); method.setAttribute("aria-label", "Explore method");
+	method.append(createEl("option", { value: "citation", text: tr("探索引用", "Explore citations") }),
+		createEl("option", { value: "similar", text: tr("查找相似论文", "Find similar papers") }));
+	exploreTools.append(method);
+	method.addEventListener("change", () => {
+		similaritySearch = method.value === "similar"; refreshSimilarityScores();
+		const pool = similarityExplorer.result?.graph ?? currentGraph;
+		if (pool) showDetail(pool.nodes.find(paper => paper.isSeed) ?? null, pool, null);
+	});
 	const similarityExplorer = mountSimilarityExplorer(stage, requestLibraryBridge, () => {
 		if (!alive) return;
 		refreshSimilarityScores();
@@ -243,10 +257,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const doi = paper.doiUrl?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
 		if (doi) deps.openGraph?.({ kind: "doi", value: doi });
 		else if (/^W\d+$/i.test(paper.id)) deps.openGraph?.({ kind: "openalex", value: paper.id });
-	}, undefined, createComparisonCitations(() => new OpenAlexClient(deps.getJson, deps.getSettings())));
+	}, undefined, createComparisonCitations(() => new OpenAlexClient(deps.getJson, deps.getSettings())), { controlsHost: exploreTools,
+		literature: createLiteratureSearch(() => new OpenAlexClient(deps.getJson, deps.getSettings()), () => deps.getSettings().excludeRetracted) });
 	function refreshSimilarityScores(): void {
 		surface.apiStatus.refresh();
-		surface.diversifyResults.disabled = reload.disabled || layoutMode === "radial";
+		surface.diversifyResults.disabled = reload.disabled || similaritySearch || layoutMode === "radial";
 		surface.diversityHint.textContent = layoutMode === "radial"
 			? tr("相似度搜索直接按文本分数排序；多样化仅用于引用邻居筛选。", "Similarity search ranks directly by text score; diversity applies only to citation-neighbor selection.")
 			: tr("减少重复候选，为不同论文留出空间。更改后重新构建引用图谱。", "Reduce redundant candidates to make room for different papers. Changes rebuild the citation graph.");
@@ -254,7 +269,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		setHoverHint(surface.diversifyResults.parentElement!, surface.diversityHint.textContent ?? "");
 		root.classList.toggle("is-similarity", layoutMode === "radial");
 		root.classList.toggle("is-citation-similarity", layoutMode === "radial" && similarityKind === "citations");
-		const scoped = similarityExplorer.update(currentGraph, storedText, layoutMode === "radial", similarityKind);
+		const scoped = similarityExplorer.update(currentGraph, storedText, similaritySearch, similarityKind);
 		syncInfoBar();
 		if (scoped) {
 			comparison = scoped.scores;
@@ -384,6 +399,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				}
 			});
 			paintPaperActions(card, paper, seed.id, null, null, {
+				library: deps.paperLibrary,
 				getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
 				setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
 				persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
@@ -530,6 +546,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (noted?.reading && !readingChangePending(deps.getSettings().researchProjects, projectId, paper)) state.reading = noted.reading;
 			paintPaperWorkflowState(detail, paper, state, (reading, previous) => saveReading(paper, projectId, reading, previous, state.source));
 			paintPaperActions(detail, paper, projectId, null, null, {
+				library: deps.paperLibrary,
 				getPaperState: (seedId, paperId) => deps.getSettings().researchProjects[seedId]?.paperStates?.[paperId],
 				setStaged: (target, seedId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, seedId, target, { staged, source }); },
 				persist: deps.stagePaper ? source => deps.stagePaper!(paper, projectId, source) : undefined,
@@ -566,6 +583,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const stageEdge = seed && !paper.isSeed ? findEdge(graph.edges, paper.id, seed.id) : null;
 		const stageEvidence = seed && !paper.isSeed ? getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id) : null;
 		paintPaperActions(detail, paper, seed?.id ?? null, stageEdge, stageEvidence, {
+			library: deps.paperLibrary,
 			getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
 			setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
 			persist: deps.stagePaper && seed ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
@@ -872,7 +890,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (excluded.join("\0") !== (currentGraph.excludedIds ?? []).join("\0")) renderGraph(sourceGraph, lastDepthNote);
 	};
 	window.addEventListener("research-connected-project", onProject);
-	const onLibraryChanged = (): void => { similarityExplorer.invalidate(); loadStoredText(); };
+	const onLibraryChanged = (): void => { similarityExplorer.invalidate(); loadStoredText(); if (selected && currentGraph) showDetail(selected, currentGraph, null); };
 	window.addEventListener("research-connected-library-changed", onLibraryChanged);
 
 	return () => {

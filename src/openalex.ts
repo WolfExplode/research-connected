@@ -93,6 +93,15 @@ export class OpenAlexClient {
 		return this.getResults(url);
 	}
 
+	/** Semantic retrieval searches the index, independently of a citation neighborhood. */
+	semanticWorks(query: string): Promise<RawWork[]> {
+		const url = new URL(`${OPENALEX_API}/works`);
+		url.searchParams.set("search.semantic", query.slice(0, 2000));
+		url.searchParams.set("per_page", "50");
+		url.searchParams.set("select", WORK_SELECT);
+		return this.getResults(url);
+	}
+
 	/**
 	 * Works the seed cites. OpenAlex names this filter `cited_by` (outgoing).
 	 * `pages > 1` follows the cursor for deeper sampling.

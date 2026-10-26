@@ -1,3 +1,4 @@
+import { verifyLiterature } from "./literature";
 import { mountGraphApp } from "../../src/app";
 import { DEFAULT_SETTINGS } from "../../src/settings-model";
 import { fixtureGet } from "../../preview/fixture";
@@ -35,7 +36,7 @@ async function verify(): Promise<void> {
 		observer.observe(root, { childList: true, subtree: true });
 	});
 	for (const hidden of Array.from(root.querySelectorAll<HTMLElement>("[hidden]"))) {
-		check(getComputedStyle(hidden).display === "none", "hidden controls must stay hidden without important overrides");
+		check(getComputedStyle(hidden).display === "none", `hidden controls must stay hidden without important overrides: ${hidden.outerHTML.slice(0, 200)}`);
 	}
 	const optionsButton = root.querySelector<HTMLButtonElement>(".cpo-graph-options-button")!;
 	const optionsPanel = root.querySelector<HTMLElement>(".cpo-graph-options")!;
@@ -69,28 +70,33 @@ async function verify(): Promise<void> {
 	const similarity = root.querySelector<HTMLButtonElement>('[data-layout="radial"]')!;
 	check(similarity.textContent?.includes("相似度"), "radial is presented as Similarity");
 	similarity.click();
+	check(libraryReads === 0, "changing the layout must not retrieve a different paper pool");
+	const method = root.querySelector<HTMLSelectElement>('.cpo-explore-method')!;
+	method.value = "similar"; method.dispatchEvent(new Event("change"));
 	await new Promise(resolve => window.setTimeout(resolve, 0));
 	const scope = root.querySelector<HTMLSelectElement>('[aria-label="Similarity search scope"]')!;
-	check(scope.value === "library" && libraryReads === 1, "Text similarity defaults to a whole-library read");
+	check(scope.value === "library" && Number(libraryReads) === 1, "Text similarity defaults to a whole-library read");
 	check(root.querySelector(".cpo-status")?.textContent?.includes("1"), "library retrieval includes a paper absent from the citation graph");
 	scope.value = "both"; scope.dispatchEvent(new Event("change"));
+	await new Promise(resolve => window.setTimeout(resolve, 20));
 	const scopeStatus = root.querySelector(".cpo-status")?.textContent;
 	check(similarity.getAttribute("aria-pressed") === "true", "Similarity activates on the shared canvas");
 	const textView = root.querySelector<HTMLButtonElement>('[data-similarity="text"]')!;
 	const citationView = root.querySelector<HTMLButtonElement>('[data-similarity="citations"]')!;
 	check(textView.getAttribute("aria-pressed") === "true", "Text is the default similarity view");
 	citationView.click();
-	check(libraryReads === 1, "comparison changes preserve the candidate pool without rereading the library");
+	check(Number(libraryReads) === 1, "comparison changes preserve the candidate pool without rereading the library");
 	check(citationView.getAttribute("aria-pressed") === "true" && textView.getAttribute("aria-pressed") === "false", "Citations is a separate comparison view");
 	textView.click();
 	check(textView.getAttribute("aria-pressed") === "true", "Text comparison can be restored without rebuilding the graph");
 	check(root.querySelector(".cpo-status")?.textContent === scopeStatus, "returning to Text restores the same current-scope summary");
 	check(!root.querySelector(".cpo-similarity-search [role=status]"), "similarity controls must not duplicate the top info bar");
 	root.querySelector<HTMLButtonElement>('[data-layout="force2d"]')!.click();
-	check(!root.querySelector(".cpo-status")?.textContent?.includes(scopeStatus ?? "unreachable"), "leaving Similarity clears its scope summary");
+	check(root.querySelector(".cpo-status")?.textContent === scopeStatus, "changing layout preserves the search results and scope summary");
 	similarity.click();
 	check(!root.querySelector(".cpo-similarity-list"), "Similarity has no competing permanent ranked list");
 	root.querySelector<HTMLButtonElement>('[data-layout="force2d"]')!.click();
+	method.value = "citation"; method.dispatchEvent(new Event("change"));
 	const reading = root.querySelector<HTMLSelectElement>(".cpo-paper-reading-select")!;
 	reading.value = "read";
 	reading.dispatchEvent(new Event("change"));
@@ -118,6 +124,7 @@ async function verify(): Promise<void> {
 	handle.destroy();
 	document.documentElement.lang = "en";
 	await verifyIntegratedWorkflow(root);
+	await verifyLiterature(root);
 	document.body.textContent = "PASS: reading persistence and rollback, visible path search, invalid and valid endpoints, hidden controls, cleanup";
 	document.body.dataset.result = "passed";
 }

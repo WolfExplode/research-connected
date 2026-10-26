@@ -1,0 +1,24 @@
+import type { PaperNode } from "./types";
+import type { ReadingStatus } from "./project-state";
+
+export interface LibraryPaperState {
+	note: string | null;
+	held: boolean;
+	bookmark: boolean;
+	reason?: string;
+	error?: string;
+	ambiguous?: boolean;
+}
+export interface LibraryBookmark { paper: PaperNode; note: string; reading: ReadingStatus }
+
+/** Vault-owned paper state. Graph/project snapshots never own bookmarks or downloads. */
+export interface PaperLibrary {
+	read(paper: PaperNode): LibraryPaperState;
+	busy?(paper: PaperNode): boolean;
+	setBookmark(paper: PaperNode, value: boolean): Promise<void>;
+	save(paper: PaperNode): Promise<LibraryPaperState>;
+	bookmarks(): LibraryBookmark[];
+	open(note: string): void;
+	/** Import old project bookmarks without overriding a choice already stored in a note. */
+	migrateBookmark(paper: PaperNode, source: string, reading?: ReadingStatus): Promise<void>;
+}

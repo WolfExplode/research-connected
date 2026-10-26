@@ -17,8 +17,9 @@ and sizing separate. There is no separate backend owned by this plugin.
 | Layout, relationships, and candidate selection | src/layout*.ts, src/similarity.ts, src/diversity.ts, src/neighborhood.ts |
 | Work identity and project snapshots | src/work-identity.ts, src/project-state.ts, src/graph-edit.ts |
 | Reading changes and final view saves | src/workflow/reading-state.ts, src/workflow/project-save.ts |
-| Text/citation comparison and retrieval UI | src/paper-comparison.ts, src/similarity-search.ts, src/similarity-explorer.ts |
+| Text/citation comparison and retrieval UI | src/paper-comparison.ts, src/similarity-search.ts, src/similarity-explorer.ts, src/workflow/literature-search.ts |
 | Scholarly source adapters | src/openalex.ts, src/citation-sources.ts, src/obsidian-http.ts |
+| Vault-owned paper actions and bookmark migration | src/paper-library.ts, src/vault-paper-library.ts, src/workflow/bookmark-migration.ts |
 | Literature notes and optional host integration | src/vault-note.ts, src/library-bridge.ts |
 | Question-scoped discovery | src/question-workspace.ts, src/discovery-graph.ts |
 | Optional research narrative | src/narrative.ts, src/llm.ts |
@@ -32,7 +33,7 @@ can move together. Avoid file moves whose only effect is adding indirection to i
 **Paper** means one project-local work with traceable source records. Work identity logic owns
 alias resolution; UI modules do not infer identity from a similar title.
 
-**Project** means a saved citation graph and its paper states, deep dives, views, and explicit
+**Project** means a saved citation graph and its reading/exclusion state, deep dives, views, and explicit
 question memberships. Transient local discovery and similarity pools must not replace its snapshot.
 
 **View** means layout, comparison kind, distance scale, filters, selection, viewport, and collapsed
@@ -56,6 +57,13 @@ are not encrypted. User project data never belongs in repository fixtures or scr
 Pure graph calculations accept data and return data. They do not access Obsidian, DOM, or HTTP.
 Source/persistence Adapters do not import UI mounting code. The composition modules connect these
 Seams; tests/contracts/architecture.mjs checks the existing semantic core and adapter direction.
+
+src/workflow/literature-search.ts owns OpenAlex semantic candidate retrieval, a bounded per-surface
+session cache, shared request pacing, and research/retraction filtering. src/similarity-search.ts
+owns DOI/OpenAlex deduplication and stable Text ranking across library and literature candidates.
+The explorer coordinates pending/error/empty state, optional local text enrichment, and stale-result
+guards. Pane and embed mounting choose an explicit task independently of the layout. Similarity
+source graphs and results are transient; citation sessions and saved snapshots remain separate.
 
 The optional LibraryBridge supplies local holdings, text evidence, and discovery capabilities.
 Missing capabilities must leave citation exploration usable. Retrieval UI distinguishes pending,
@@ -92,3 +100,11 @@ unchanged graph avoids computing a layout whose coordinates would be discarded. 
 animation pauses while the document is hidden or reduced motion is requested; interaction state
 remains usable. Large initial planar layouts still run synchronously; profile browser long tasks
 before introducing a worker or changing layout semantics.
+
+PaperLibrary is the shared paper-action interface. The Obsidian adapter finds or creates notes,
+reads the vault-wide bookmark flag, delegates acquisition to the optional bridge, and shares
+in-flight mutations across surfaces. The note remains authoritative; confirmed-write caches cover
+Obsidian metadata-index delay and are invalidated on note changes. The companion library writer
+owns source naming, sidecars, file validation, and acquisition outcomes. Project `staged` flags are
+legacy migration inputs, not the source of truth for new bookmarks. Migration backs up plugin data
+and clears each legacy flag only after a durable vault write and persisted receipt.

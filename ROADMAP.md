@@ -123,7 +123,7 @@ P1 按版本排。P2 先记着，有人确实要用再做。多种子已定在 2
 | P2 | 详情卡显示 Semantic Scholar TLDR，标明来源；没有则不占位 | 未排期 | 面板和嵌入一致；无 TLDR 时版面不变 | [#6](https://github.com/Abe-Junwei/research-connected/issues/6) |
 | P2 | 图谱快照写成库内 JSON，`data.json` 只留引用，并能重载。与 Canvas 导出不是同一份文件 | 未排期 | 重载后节点、边、阅读状态一致；旧的内嵌快照仍能打开 | [#7](https://github.com/Abe-Junwei/research-connected/issues/7) |
 | P2 | Bases 视图：用 base 里带 DOI 或 OpenAlex ID 的笔记作 seed set。2.0 的多种子没有笔记入口，本项仍要另做 | 未排期 | 跳过没有标识的行并说明数量 | [#8](https://github.com/Abe-Junwei/research-connected/issues/8) |
-| P2 | 用种子标题和摘要做语义检索，只作候选，不画结构边 | 未排期 | 和 `related_to` 分得开；失败不影响其余采样 | [#9](https://github.com/Abe-Junwei/research-connected/issues/9) |
+| P2 | 用种子标题和摘要做语义检索，只作候选，不画结构边 | 已实现（当前开发版） | Find similar papers → Wider literature；OpenAlex semantic 检索后按 Text 重排，最多 50 个候选；与 `related_to` 分开，失败不影响引用会话 | [#9](https://github.com/Abe-Junwei/research-connected/issues/9) |
 
 ### P1-1 已定规则（2026-10-18）
 

@@ -28,6 +28,30 @@ placement, and heavy actions stay with their respective mounting code.
 - Respect Obsidian colors. Hardcoded fallback colors exist for standalone previews; add no fixed
   palette that overrides a user's theme.
 
+## Tasks, retrieval, and layouts
+
+The top task selector owns **Explore citations**, **Find similar papers**, **Screen papers**, and
+**Search PDFs**. Find similar papers has one source-paper field and the shared **My library /
+Wider literature / Both** scope and Show controls. Provider names belong in contextual help rather
+than task names. Legacy companion-plugin similarity results enter this same workflow.
+
+Network, Timeline, and Similarity map are presentation choices. A layout change must preserve the
+current paper set and must not initiate literature or library retrieval. Text/Citations changes
+comparison and positioning without reranking membership. Screening and PDF retrieval do not expose
+similarity distances because their ranks are not similarity scores. Embeds use the same explicit
+task selection rather than starting a new search when a radial layout is selected.
+
+Wider literature sends the source title and abstract (or a local study summary) to OpenAlex semantic
+search, then reranks up to 50 returned candidates using the plugin's Text comparison. Do not label
+this as an exhaustive search or a global nearest-neighbor guarantee. The Show count is a display
+limit; it does not expand the provider's query cap. Both deduplicates literature and library
+holdings by DOI/OpenAlex identity. Keep provider limits in the summary's shared hover hint.
+
+Literature results and their source graph are transient. Preserve the saved citation session when
+switching tasks and never save search results over its snapshot. Bound request frequency and session
+caches, share in-flight requests for the same query, retain retry actions, and reject late completions
+when the source changes, the task closes, or the surface is disposed.
+
 ## Information placement and relevance
 
 Use src/info-bar.ts for the pane and embed top info bar. Do not write directly to its DOM element
@@ -60,3 +84,30 @@ The browser maintenance suite exercises narrow containers inside a wide desktop 
 pane/embed sizing, light/dark token paths, workflow failures, retries, navigation, and restoration.
 Host acceptance should also cover Reading view, Live Preview, popouts, keyboard selection, and the
 actual themes in use. Browser fixtures do not substitute for the full host matrix.
+
+## Paper actions and durable ownership
+
+Save and Bookmark are separate shared actions in graph details, discovery results, prior/later
+cards, global bookmark cards, and embeds. Save creates or reuses a library note and explicitly
+attempts acquisition through the library bridge. A failed download keeps the note and records its
+reason and attempt time; show a retry action beside that paper. Existing local full text shows
+In library and is not downloaded again. Availability checks and discovery never trigger acquisition.
+
+Bookmark is the vault-wide `bookmark` frontmatter flag. Bookmarking a new paper creates a
+metadata-only note without downloading; removing it only clears the flag. It never deletes the
+note or files, changes reading state, or assigns question relevance. Question links organize a
+paper without creating project-specific bookmarks. The Bookmarks entry remains reachable in every
+task. Exclude continues to affect the current project; it does not delete a library paper or label
+it irrelevant to a question.
+
+Human metadata, reading notes, acquisition state, and bookmarks belong in vault notes; structured
+research records remain in tool-managed sidecars. Plugin settings retain graph/project state,
+credentials, and rebuildable snapshots rather than a competing library record. Prefer the host's
+canonical note/sidecar writer. Without an acquisition-capable bridge, retain the note and record
+download-unavailable rather than claiming a download. Never silently merge ambiguous matches.
+
+Legacy project bookmarks migrate after an original-data backup. Copy each bookmark into the vault
+before clearing its old flag; preserve an existing note's explicit bookmark choice and reading
+state. Failed migrations retain their legacy entries and expose retry. Cache and in-flight state
+are shared across panes/embeds; repeated saves share acquisition, and failures remain visible even
+when a detail card is repainted.

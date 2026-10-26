@@ -2,9 +2,9 @@
 
 The main workspace selects question notes from `discovery.context().questions`. Saved citation
 graphs carry explicit `questionPaths` memberships; old graphs start unassigned, and a graph can
-be reused by several questions. Its snapshot, views and saved/excluded papers remain shared.
+be reused by several questions. Its snapshot, views and exclusions remain shared; bookmarks belong to vault notes.
 `activeQuestion` remembers the selected note path. The main **Explore** selector switches between
-Citation network, Rank papers, Search PDFs and Similar local papers. All use the same question
+Explore citations, Find similar papers, Screen papers and Search PDFs. All use the same question
 selector, canvas, layout controls and paper details panel. Only method-specific inputs are shown.
 Changing method retains the citation graph and caches local results for the session; late tool
 responses are ignored after a context switch or disposal. Local results never enter saved citation
@@ -82,3 +82,34 @@ stale/refreshing/error indicators. The host emits coalesced library-change event
 badges without refreshing or rebuilding citation data. Research Vault implements this with one
 reusable background Node worker and batches of up to 20 DOIs; it does not import its ESM research
 toolchain into Obsidian's renderer.
+
+
+### Unified similarity task
+
+The pane presents one Find similar papers task. Whole-library comparison uses textLibrary; the
+existing discovery similar request remains a compatibility fallback for older bridges and external
+links. Incoming similar payloads enter that task as transient local results, preserving available
+SPECTER2 evidence. Wider-literature retrieval is owned by Research Connected through its OpenAlex
+HTTP adapter, not by the ASReview discovery runner. Query and source membership edges are never
+imported as citation evidence. Selecting Network, Timeline, or Similarity map does not run discovery.
+
+## Optional library mutations
+
+Version 1 bridges may expose `save(paper)` and `bookmark(paper, value, options)` returning
+LibraryAvailability. Local results can include `bookmark`, `reading`, `reason`, and `attemptedAt`.
+The rendering-only `read` and availability `check` contract stays unchanged.
+
+Save creates/reuses a canonical note and attempts acquisition. A note-only outcome with a failure
+reason is a completed result, not a missing note. Bookmark creates/reuses a note but never downloads
+or deletes files. Its options include `onlyIfMissing`, `source` provenance, and a migration reading
+state used only for newly created notes. Honor existing canonical bookmark values, including false;
+legacy favorite is compatible input. Keep matches unambiguous, share pending downloads, preserve
+human metadata and reading text, and notify after changes. Return confirmed mutation state even
+when Obsidian has not yet indexed an external tool write.
+
+Research Vault implements these operations using the locked `keep` CLI writer for new paired
+sources and acquisition, and Obsidian frontmatter edits for existing-note bookmarks. It can link
+already-held files instead of downloading duplicates. A note outside Research/Papers can be
+bookmarked in place; acquisition through its tools requires that note to be filed in Research/Papers.
+The graph's vault adapter supplies metadata-only notes and durable failure state if the bridge has
+no acquisition capability. It never falls back to silently treating a bookmark as a download.

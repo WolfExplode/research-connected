@@ -1,3 +1,4 @@
+import { vaultPaperLibrary } from "./vault-paper-library";
 import { MarkdownRenderChild, Plugin, type MarkdownPostProcessorContext } from "obsidian";
 import { mountEmbed } from "./embed-mount";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
@@ -47,6 +48,7 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,
+			paperLibrary: vaultPaperLibrary(plugin.app, () => plugin.getSettings()),
 			stagePaper: async () => { await plugin.saveSettings(false); },
 			createNote: (filename, markdown, folder) => createVaultNote(plugin.app, filename, markdown, folder),
 			lookupLiteratureNote: (paper) => lookupLiteratureNote(plugin.app, paper, plugin.getSettings().literatureDoiProperty),

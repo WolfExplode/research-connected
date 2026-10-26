@@ -15,7 +15,7 @@ declare global {
 
 export interface LibraryAvailability {
 	doi: string | null;
-	local: { state: "held" | "note-only" | "absent" | "ambiguous"; note: string | null; files: string[]; matchedBy?: "doi" | "openalex" | "title" | "file" };
+	local: { state: "held" | "note-only" | "absent" | "ambiguous"; note: string | null; files: string[]; bookmark?: boolean; reading?: string; reason?: string; attemptedAt?: string; matchedBy?: "doi" | "openalex" | "title" | "file" };
 	providers: Record<string, { state: string; url?: string; links?: Array<{ url: string; kind: string }>; detail?: string; checkedAt?: string; cached?: boolean; stale?: boolean; checking?: boolean; refreshError?: string }>;
 	checking?: boolean;
 }
@@ -24,6 +24,8 @@ export interface LibraryAvailability {
 export interface LibraryBridge {
 	version: 1;
 	read(paper: PaperNode): LibraryAvailability;
+	save?(paper: PaperNode): Promise<LibraryAvailability>;
+	bookmark?(paper: PaperNode, value: boolean, options?: { onlyIfMissing?: boolean; source?: string; reading?: string }): Promise<LibraryAvailability>;
 	check(paper: PaperNode, options: { provider?: string; local?: boolean; refresh?: boolean }): Promise<LibraryAvailability>;
 	prefetch?(papers: readonly PaperNode[]): void;
 	/** Returns cached evidence; the host may schedule background downloads and notify on completion. */

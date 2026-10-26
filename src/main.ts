@@ -1,3 +1,5 @@
+import { vaultPaperLibrary, invalidatePaperLibrary } from "./vault-paper-library";
+import { migrateProjectBookmarks } from "./workflow/bookmark-migration";
 import { addIcon, Notice, Plugin } from "obsidian";
 import { LOGO_ICON, LOGO_SVG } from "./logo";
 import { tr } from "./i18n";
@@ -19,6 +21,7 @@ import type { DiscoveryPayload } from "./discovery-graph";
 
 export default class ConnectedPapersPlugin extends Plugin {
 	settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS };
+	private migratingBookmarks = false;
 	private pendingSave: Promise<void> = Promise.resolve();
 
 	async onload(): Promise<void> {
@@ -65,12 +68,19 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.registerEvent(this.app.workspace.on("css-change", () => {
 			window.dispatchEvent(new Event("research-connected-theme"));
 		}));
-		const dropLiteratureIndex = (): void => invalidateLiteratureIndex();
+		const dropLiteratureIndex = (file?: { path: string }): void => { invalidateLiteratureIndex(); invalidatePaperLibrary(this.app, file?.path); window.dispatchEvent(new Event("research-connected-library-changed")); };
 		this.registerEvent(this.app.metadataCache.on("changed", dropLiteratureIndex));
-		this.registerEvent(this.app.vault.on("delete", dropLiteratureIndex));
-		this.registerEvent(this.app.vault.on("rename", dropLiteratureIndex));
+		this.registerEvent(this.app.vault.on("delete", () => dropLiteratureIndex()));
+		this.registerEvent(this.app.vault.on("rename", () => dropLiteratureIndex()));
+		this.registerEvent(this.app.vault.on("create", file => { if ("extension" in file && file.extension !== "md") dropLiteratureIndex(); }));
 		this.addSettingTab(new ConnectedPapersSettingTab(this.app, this, this));
 		registerConnectedPapersEmbed(this);
+		this.addCommand({ id: "migrate-legacy-bookmarks", name: tr("迁移旧项目收藏到文库", "Migrate legacy bookmarks to library"), callback: () => {
+			void this.migrateBookmarks().catch(error => new Notice(error instanceof Error ? error.message : "Bookmark migration failed. Legacy entries are retained."));
+		} });
+		this.app.workspace.onLayoutReady(() => {
+			void this.migrateBookmarks().catch(error => new Notice(error instanceof Error ? error.message : "Bookmark migration failed. Legacy entries are retained."));
+		});
 	}
 
 	getSettings(): ConnectedPapersSettings {
@@ -116,6 +126,18 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.settings.stagedPapers = [];
 		this.settings.graftedBySeed = {};
 		if (migrateIdentity) await this.saveSettings(false);
+	}
+
+	async migrateBookmarks(): Promise<void> {
+		if (this.migratingBookmarks || !Object.values(this.settings.researchProjects).some(project => Object.values(project.paperStates ?? {}).some(state => state.staged))) return;
+		this.migratingBookmarks = true;
+		try {
+			if (!this.manifest.dir) throw new Error("Plugin folder unavailable; legacy bookmarks are retained.");
+			const path = `${this.manifest.dir}/data-before-vault-bookmarks.json`;
+			if (!await this.app.vault.adapter.exists(path)) await this.app.vault.adapter.write(path, JSON.stringify(this.settings));
+			await migrateProjectBookmarks(this.settings.researchProjects, vaultPaperLibrary(this.app, () => this.settings), () => this.saveSettings(false));
+			window.dispatchEvent(new Event("research-connected-library-changed"));
+		} finally { this.migratingBookmarks = false; }
 	}
 
 	async saveSettings(notify = true): Promise<void> {
