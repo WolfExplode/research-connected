@@ -15,8 +15,6 @@ that repository's needs; the upstream product plan it was forked from is kept in
 
 ## Next
 
-- **Library documentation.** Finish the migration in the research library: its setup guide,
-  ADR 0036 and the library pages, then record the ownership split and process boundary as ADR 0038.
 - **Saved graphs agents can read.** Saved citation graphs, question memberships, deep dives and
   exclusions live in `data.json`. Expose a question's graph through a CLI command, or store it as a
   vault note the plugin reads.
