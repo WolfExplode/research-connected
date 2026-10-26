@@ -20,7 +20,7 @@ and sizing separate. Its paper library runs on the research repository's CLI as 
 | Reading changes and final view saves | src/workflow/reading-state.ts, src/workflow/project-save.ts |
 | Text/citation comparison and retrieval UI | src/paper-comparison.ts, src/similarity-search.ts, src/similarity-explorer.ts, src/workflow/literature-search.ts |
 | Scholarly source adapters | src/openalex.ts, src/citation-sources.ts, src/obsidian-http.ts |
-| Per-service request lanes and shared rate-limit pauses | src/provider-limits.ts, src/provider-pause-file.ts |
+| Per-service request lanes, shared rate-limit pauses and the OpenAlex response cache | src/provider-limits.ts, src/provider-pause-file.ts, src/research-tools.ts |
 | Vault-owned paper actions and bookmark migration | src/paper-library.ts, src/vault-paper-library.ts, src/workflow/bookmark-migration.ts |
 | Literature notes and the graph's library interface and panel | src/vault-note.ts, src/library-panel.ts |
 | Paper library over the research CLI (holdings, availability, Save, Bookmark, SPECTER2, discovery, labels) | src/research-library.ts, src/research-tools.ts, src/open-access-queue.ts, src/availability-policy.ts, src/fetched-evidence.ts, src/paper-labels.ts |
@@ -114,18 +114,16 @@ Scholar, Crossref, OpenCitations, Europe PMC), shared by panes, embeds and clien
   backing off 1, 2 and 4 seconds.
 - **Pauses:** a lasting 429 pauses that service (OpenAlex 402, a spent daily budget, pauses it
   for an hour).
-- **Sharing pauses:** when the vault sits inside the research repository, pauses go to
-  `.cache/research/providers/<service>.json`. The research CLI reads and writes the same files,
-  so one rate limit stops both processes. The build allows `fs` and `path` for this; the plugin
-  is desktop-only.
-- **Response cache:** OpenAlexClient answers from `.cache/research/openalex/` before entering the
-  lane, so a paused service still serves stored responses (src/openalex-cache-file.ts, installed
-  with the pause store). The format mirrors the research CLI's `Tools/research/openalex-cache.cjs`,
-  and both repositories assert the same golden keys: gzip JSON named by a SHA-256 of the request
-  without `api_key`/`mailto`, holding only the path. Lifetimes follow the request kind (works and
-  references 30 days; citing, related and searches 7; other lists 1); mtime marks last use for LRU
-  eviction past 500 MB. `fresh` clients (Reload, literature retry) skip reads but still store. The
-  build also allows `crypto` and `zlib` for this.
+- **Sharing pauses:** when the vault sits inside the research repository, the lane reads
+  `.cache/research/providers/<service>.json` before each request and records its own pauses
+  through the research CLI's availability worker, so one rate limit stops both processes. The
+  build allows `fs` and `path` for the reads; the plugin is desktop-only.
+- **Response cache:** OpenAlexClient asks the availability worker for a stored response before
+  entering the lane, so a paused service still serves cached results, and hands new responses to
+  the worker to store (`workerOpenAlexCache` in src/research-tools.ts). The format, lifetimes and
+  LRU eviction live only in the research CLI's `Tools/research/openalex-cache.cjs`. `fresh`
+  clients (Reload, literature retry) skip reads but still store. Without research tools, requests
+  go uncached.
 
 PaperLibrary is the shared paper-action interface. The Obsidian adapter finds or creates notes,
 reads the vault-wide bookmark flag, delegates note writes and acquisition to ResearchLibrary, and shares

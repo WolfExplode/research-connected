@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { openAccessWorks } from "../../src/fetched-evidence";
 import { createOpenAccessQueue, type AvailabilityResults } from "../../src/open-access-queue";
 import { ResearchLibrary, type LibraryHost, type VaultFile } from "../../src/research-library";
-import type { AvailabilityWorker, CliResponse, ProviderRecord, ResearchTools } from "../../src/research-tools";
+import { workerOpenAlexCache, type AvailabilityWorker, type CliResponse, type ProviderRecord, type ResearchTools } from "../../src/research-tools";
 import type { PaperNode } from "../../src/types";
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -29,7 +29,8 @@ function tools(answer: (args: string[], input: string) => CliResponse | Promise<
 	return {
 		calls,
 		json: async (args, options = {}) => { calls.push({ args, input: options.input ?? "" }); return answer(args, options.input ?? ""); },
-		worker: () => ({ closed: false, check: async () => [], cached: async dois => dois.map(doi => ({ doi, providers: {} })), dispose() {}, ...worker }),
+		worker: () => ({ closed: false, check: async () => [], cached: async dois => dois.map(doi => ({ doi, providers: {} })),
+			openAlexRead: async () => null, openAlexWrite: async () => undefined, pause: async () => undefined, dispose() {}, ...worker }),
 		dispose() {},
 	};
 }
@@ -134,11 +135,26 @@ export async function verifyResearchLibrary(): Promise<void> {
 			[{ doi: "https://doi.org/10.1/x", open_access: { is_oa: true }, best_oa_location: null, locations: null }]);
 
 		await verifyOpenAccessQueue();
+		await verifyWorkerCache();
 	} finally {
 		// Disposing clears pending refresh timers before the host's dispatch is restored.
 		for (const library of libraries) library.dispose();
 		host.dispatchEvent = previousDispatch;
 	}
+}
+
+// The plugin writes no cache files itself: OpenAlex responses go through the research CLI's worker.
+async function verifyWorkerCache(): Promise<void> {
+	const stored = new Map<string, unknown>();
+	const worker = tools(() => ({}), {
+		openAlexRead: async url => stored.get(url) ?? null,
+		openAlexWrite: async (url, body) => { stored.set(url, body); },
+	}).worker();
+	const cache = workerOpenAlexCache(() => worker);
+	assert.equal(await cache.read("https://api.openalex.org/works/W1"), undefined, "a worker miss is a cache miss");
+	await cache.write("https://api.openalex.org/works/W1", { id: "W1" });
+	assert.deepEqual(await cache.read("https://api.openalex.org/works/W1"), { id: "W1" });
+	assert.equal(await workerOpenAlexCache(() => null).read("https://api.openalex.org/works/W1"), undefined, "no research tools means no cache");
 }
 
 async function verifyOpenAccessQueue(): Promise<void> {
@@ -151,6 +167,7 @@ async function verifyOpenAccessQueue(): Promise<void> {
 		closed: false,
 		cached: async dois => { cachedReads.push([...dois]); return dois.map(doi => ({ doi, providers: (doi === "10.1/fresh" ? { oa: fresh } : {}) as Record<string, ProviderRecord> })); },
 		check: async dois => { checks.push([...dois]); return dois.map(doi => ({ doi, value: fail ? { state: "error", detail: "down", retryAfter: new Date(now + 60_000).toISOString(), checkedAt: new Date(now).toISOString() } : { state: "not-found", checkedAt: new Date(now).toISOString() } })); },
+		openAlexRead: async () => null, openAlexWrite: async () => undefined, pause: async () => undefined,
 		dispose() {},
 	};
 	const queue = createOpenAccessQueue({ worker: () => worker, results, notify: () => { notified++; }, enabled: () => true, now: () => now, debounce: 5, minInterval: 0 });

@@ -1,6 +1,7 @@
 import { execFile, spawn } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
+import type { OpenAlexCacheStore } from "./openalex";
 
 /**
  * The only way this plugin reaches the research repository's tools: child processes running
@@ -39,6 +40,11 @@ export interface AvailabilityWorker {
 	/** Up to 20 DOIs checked against OpenAlex, or up to 500 read from the provider cache. */
 	check(dois: string[], refresh: boolean): Promise<Array<{ doi: string; value: ProviderRecord }>>;
 	cached(dois: string[]): Promise<Array<{ doi: string; providers: Record<string, ProviderRecord> }>>;
+	/** A stored OpenAlex response, or null. The worker is this plugin's only cache writer. */
+	openAlexRead(url: string): Promise<unknown>;
+	openAlexWrite(url: string, body: unknown): Promise<void>;
+	/** Records a rate-limit pause in the shared file every research process reads. */
+	pause(service: string, state: string, until: number): Promise<void>;
 	dispose(): void;
 }
 
@@ -92,11 +98,26 @@ export function nodeResearchTools(config: ResearchToolsConfig): ResearchTools {
 	};
 }
 
+interface WorkerResponse { id?: number; results?: unknown; value?: unknown; error?: string }
+
+function results<T>(response: WorkerResponse): T {
+	if (!Array.isArray(response.results)) throw new Error("Open-access worker request failed");
+	return response.results as T;
+}
+
+/** OpenAlex responses shared with the research CLI, read and stored by its worker. */
+export function workerOpenAlexCache(worker: () => AvailabilityWorker | null): OpenAlexCacheStore {
+	return {
+		async read(url) { return (await worker()?.openAlexRead(url)) ?? undefined; },
+		async write(url, body) { await worker()?.openAlexWrite(url, body); },
+	};
+}
+
 /** One worker process serves many JSONL requests, one in flight per id. */
 function availabilityWorker(config: ResearchToolsConfig, timeout = 45_000): AvailabilityWorker {
 	const child = spawn(config.node, [join(config.repository, "Tools", "research", "availability-worker.js"), "--cache", join(config.repository, ".cache", "research")],
 		{ cwd: config.repository, windowsHide: true, shell: false, stdio: ["pipe", "pipe", "pipe"], env: config.env() });
-	const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: number }>();
+	const pending = new Map<number, { resolve(value: WorkerResponse): void; reject(error: Error): void; timer: number }>();
 	let stopped = false, buffer = "", nextId = 0;
 	const fail = (): void => {
 		stopped = true;
@@ -107,22 +128,23 @@ function availabilityWorker(config: ResearchToolsConfig, timeout = 45_000): Avai
 	child.stderr.resume(); child.stdout.setEncoding("utf8");
 	child.stdout.on("data", (chunk: string) => {
 		buffer += chunk;
-		if (buffer.length > 4 * 1024 * 1024) { fail(); child.kill(); return; }
+		// Cached OpenAlex pages can be several megabytes; the bound only stops a runaway line.
+		if (buffer.length > 64 * 1024 * 1024) { fail(); child.kill(); return; }
 		let end;
 		while ((end = buffer.indexOf("\n")) >= 0) {
 			const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
-			let response: { id?: number; results?: unknown; error?: string };
-			try { response = JSON.parse(line) as typeof response; } catch { fail(); child.kill(); return; }
+			let response: WorkerResponse;
+			try { response = JSON.parse(line) as WorkerResponse; } catch { fail(); child.kill(); return; }
 			const item = pending.get(response.id ?? -1);
 			if (!item) continue;
 			window.clearTimeout(item.timer); pending.delete(response.id!);
-			if (response.error || !Array.isArray(response.results)) item.reject(new Error("Open-access worker request failed"));
-			else item.resolve(response.results);
+			if (response.error) item.reject(new Error(response.error));
+			else item.resolve(response);
 		}
 	});
-	const request = <T>(body: Record<string, unknown>): Promise<T> => {
+	const request = (body: Record<string, unknown>): Promise<WorkerResponse> => {
 		if (stopped) return Promise.reject(new Error("Open-access worker stopped"));
-		return new Promise<T>((resolve, reject) => {
+		return new Promise<WorkerResponse>((resolve, reject) => {
 			const id = ++nextId;
 			const timer = window.setTimeout(() => { fail(); child.kill(); }, timeout);
 			pending.set(id, { resolve: resolve, reject, timer });
@@ -131,8 +153,11 @@ function availabilityWorker(config: ResearchToolsConfig, timeout = 45_000): Avai
 	};
 	return {
 		get closed() { return stopped; },
-		check: (dois, refresh) => request({ dois, refresh }),
-		cached: dois => request({ dois, cached: true }),
+		check: (dois, refresh) => request({ dois, refresh }).then(response => results<Array<{ doi: string; value: ProviderRecord }>>(response)),
+		cached: dois => request({ dois, cached: true }).then(response => results<Array<{ doi: string; providers: Record<string, ProviderRecord> }>>(response)),
+		openAlexRead: url => request({ op: "openalex-read", url }).then(response => response.value ?? null),
+		openAlexWrite: async (url, body) => { await request({ op: "openalex-write", url, body }); },
+		pause: async (service, state, until) => { await request({ op: "pause", service, state, until }); },
 		dispose() { fail(); child.stdin.end(); child.kill(); },
 	};
 }

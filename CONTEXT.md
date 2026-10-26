@@ -9,7 +9,7 @@
 - **Save paper:** create or reuse its library note and attempt full-text acquisition; a failed attempt remains recorded in that note.
 - **Reading state:** unread, to-read, or read; saved in the project and synchronized to a matching literature note.
 - **Discovery result:** a transient ranked or retrieved paper pool, scoped to a question or comparison source; it does not replace a project's citation snapshot.
-- **Research tools:** the research repository's CLI and availability worker, run as child processes; the only writer of paper notes, sidecars, acquired files and caches.
+- **Research tools:** the research repository's CLI and availability worker, run as child processes; the only creator of paper notes and the only writer of sidecars, acquired files and caches. The plugin edits frontmatter on existing notes.
 - **Paper library service:** the Interface graphs use for holdings, availability, Save and Bookmark, stored text and discovery; implemented over the research tools.
 
 See [architecture](docs/engineering/architecture.md) for ownership and persistence rules.

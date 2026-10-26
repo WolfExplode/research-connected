@@ -6,7 +6,7 @@ import { paperDois } from "./work-identity";
 import type { DiscoveryPayload, DiscoveryRequest } from "./discovery-graph";
 import type { LibraryAvailability, PaperLibraryService } from "./library-panel";
 import type { StoredTextEvidence } from "./paper-comparison";
-import type { CliResponse, ProviderRecord, ResearchTools } from "./research-tools";
+import type { AvailabilityWorker, CliResponse, ProviderRecord, ResearchTools } from "./research-tools";
 import type { PaperNode } from "./types";
 
 /**
@@ -94,6 +94,9 @@ export class ResearchLibrary implements PaperLibraryService {
 			run: request => this.runDiscovery(request),
 		};
 	}
+
+	/** The research CLI's long-lived worker, shared with the OpenAlex cache and provider pauses. */
+	worker(): AvailabilityWorker { return this.tools.worker(); }
 
 	dispose(): void {
 		this.closed = true;

@@ -96,11 +96,11 @@ if (prod) {
 	if (/require\(["']electron["']\)/.test(source)) {
 		throw new Error('main.js must not contain require("electron")');
 	}
-	// Desktop-only (manifest isDesktopOnly): Node's file APIs reach the research repository's shared
-	// provider pauses and OpenAlex response cache (crypto hashes its keys, zlib compresses it), and
-	// child processes run its research CLI and availability worker (src/research-tools.ts).
+	// Desktop-only (manifest isDesktopOnly): Node's file APIs read the research repository's shared
+	// provider pauses, and child processes run its research CLI and availability worker
+	// (src/research-tools.ts), which writes those pauses and the OpenAlex response cache.
 	// Anything else needs an explicit decision here.
-	const allowed = new Set(["obsidian", "fs", "path", "child_process", "crypto", "zlib"]);
+	const allowed = new Set(["obsidian", "fs", "path", "child_process"]);
 	const requires = [...source.matchAll(/require\(["']([^"']+)["']\)/g)].map((match) => match[1]);
 	const foreign = requires.filter((id) => !allowed.has(id));
 	if (foreign.length > 0) {

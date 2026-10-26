@@ -2,13 +2,12 @@ import { vaultPaperLibrary, invalidatePaperLibrary } from "./vault-paper-library
 import { migrateProjectBookmarks } from "./workflow/bookmark-migration";
 import { addIcon, Notice, Plugin, TFile } from "obsidian";
 import { dirname } from "path";
-import { nodeResearchTools, researchToolsProblem } from "./research-tools";
+import { nodeResearchTools, researchToolsProblem, workerOpenAlexCache, type AvailabilityWorker } from "./research-tools";
 import { ResearchLibrary, PAPERS, type LibraryHost } from "./research-library";
 import { PaperAvailabilityModal, PaperLabelsModal } from "./paper-labels";
 import { setProviderPauseStore } from "./provider-limits";
 import { setFetchedEvidenceSink } from "./fetched-evidence";
 import { providerPauseFiles } from "./provider-pause-file";
-import { openAlexCacheFiles } from "./openalex-cache-file";
 import { setOpenAlexCache } from "./openalex";
 import { LOGO_ICON, LOGO_SVG } from "./logo";
 import { tr } from "./i18n";
@@ -210,8 +209,11 @@ export default class ConnectedPapersPlugin extends Plugin {
 	/** Shares rate-limit pauses and OpenAlex responses with the configured repository and rebuilds the library when it changed. */
 	private applyResearchTools(): void {
 		const repository = this.researchRepository();
-		try { setProviderPauseStore(repository ? providerPauseFiles(repository) : null); } catch { setProviderPauseStore(null); /* In-memory pauses still apply. */ }
-		try { setOpenAlexCache(repository ? openAlexCacheFiles(repository) : null); } catch { setOpenAlexCache(null); /* Requests still work uncached. */ }
+		// The research CLI's worker writes both; without research tools, pauses stay in memory and
+		// requests go uncached.
+		const worker = (): AvailabilityWorker | null => this.researchLibrary()?.worker() ?? null;
+		try { setProviderPauseStore(repository ? providerPauseFiles(repository, async (service, pause) => worker()?.pause(service, pause.state, pause.until)) : null); } catch { setProviderPauseStore(null); }
+		setOpenAlexCache(repository ? workerOpenAlexCache(worker) : null);
 		if (this.toolsKey() === this.libraryKey) return;
 		this.library?.dispose(); this.library = null; this.libraryKey = null;
 		window.dispatchEvent(new Event("research-connected-library-changed"));
