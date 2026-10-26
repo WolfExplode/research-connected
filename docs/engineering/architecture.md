@@ -62,7 +62,7 @@ Source/persistence Adapters do not import UI mounting code. The composition modu
 Seams; tests/contracts/architecture.mjs checks the existing semantic core and adapter direction.
 
 src/workflow/literature-search.ts owns OpenAlex semantic candidate retrieval, a bounded per-surface
-session cache, shared request pacing, and research/retraction filtering. src/similarity-search.ts
+session cache over the shared response cache, shared request pacing, and research/retraction filtering. src/similarity-search.ts
 owns DOI/OpenAlex deduplication and stable Text ranking across library and literature candidates.
 The explorer coordinates pending/error/empty state, optional local text enrichment, and stale-result
 guards. Pane and embed mounting choose an explicit task independently of the layout. Similarity
@@ -118,6 +118,14 @@ Scholar, Crossref, OpenCitations, Europe PMC), shared by panes, embeds and clien
   `.cache/research/providers/<service>.json`. The research CLI reads and writes the same files,
   so one rate limit stops both processes. The build allows `fs` and `path` for this; the plugin
   is desktop-only.
+- **Response cache:** OpenAlexClient answers from `.cache/research/openalex/` before entering the
+  lane, so a paused service still serves stored responses (src/openalex-cache-file.ts, installed
+  with the pause store). The format mirrors the research CLI's `Tools/research/openalex-cache.cjs`,
+  and both repositories assert the same golden keys: gzip JSON named by a SHA-256 of the request
+  without `api_key`/`mailto`, holding only the path. Lifetimes follow the request kind (works and
+  references 30 days; citing, related and searches 7; other lists 1); mtime marks last use for LRU
+  eviction past 500 MB. `fresh` clients (Reload, literature retry) skip reads but still store. The
+  build also allows `crypto` and `zlib` for this.
 
 PaperLibrary is the shared paper-action interface. The Obsidian adapter finds or creates notes,
 reads the vault-wide bookmark flag, delegates note writes and acquisition to ResearchLibrary, and shares

@@ -261,7 +261,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (doi) deps.openGraph?.({ kind: "doi", value: doi });
 		else if (/^W\d+$/i.test(paper.id)) deps.openGraph?.({ kind: "openalex", value: paper.id });
 	}, undefined, createComparisonCitations(() => new OpenAlexClient(deps.getJson, deps.getSettings())), { controlsHost: exploreTools,
-		literature: createLiteratureSearch(() => new OpenAlexClient(deps.getJson, deps.getSettings()), () => deps.getSettings().excludeRetracted) });
+		literature: createLiteratureSearch(fresh => new OpenAlexClient(deps.getJson, deps.getSettings(), { fresh }), () => deps.getSettings().excludeRetracted) });
 	function refreshSimilarityScores(): void {
 		surface.apiStatus.refresh();
 		surface.diversifyResults.disabled = reload.disabled || similaritySearch || layoutMode === "radial";

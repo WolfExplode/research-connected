@@ -8,6 +8,7 @@ import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-id
 import { verifyEvidence } from "./verify-evidence";
 import { verifyS2RateLimit } from "./verify-s2-rate-limit";
 import { verifyProviderLimits } from "./verify-provider-limits";
+import { verifyOpenAlexCache } from "./verify-openalex-cache";
 import { verifyResearchLibrary } from "./verify-research-library";
 import { verifyDoiRecovery } from "./verify-doi-recovery";
 import { verifyComparison } from "./verify-comparison";
@@ -33,7 +34,7 @@ import { explainRelation, relationKind } from "../../src/relation";
 import type { GraphEdge } from "../../src/types";
 import { runForceLayout } from "../../src/layout";
 import { diagnoseCandidate, loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../../src/neighborhood";
-import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../../src/openalex";
+import { capQuery, explainStatus, openAlexErrorDetail, OpenAlexClient, OpenAlexError, SEMANTIC_QUERY_LIMIT, type GetJson } from "../../src/openalex";
 import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../../src/paper";
 import { paperStateBadges } from "../../src/citation-evidence";
 import { allowedExternalUrl, providerExternalUrl } from "../../src/safe-url";
@@ -289,6 +290,17 @@ function unit(): void {
 
 	assert.match(explainStatus(404), /没有找到/);
 	assert.match(explainStatus(429), /额度/);
+	assert.match(explainStatus(400), /HTTP 400/, "A 400 without a body keeps the generic message");
+	const tooLong = { error: "Search query too long", message: "Your search is too long (1561 characters; the limit is 1500). Very long pasted-text or Boolean searches are disproportionately expensive." };
+	assert.equal(openAlexErrorDetail(tooLong), "Your search is too long (1561 characters; the limit is 1500).");
+	assert.equal(openAlexErrorDetail({ error: "Invalid query parameters" }), "Invalid query parameters");
+	assert.equal(openAlexErrorDetail("not json"), "");
+	assert.match(explainStatus(400, openAlexErrorDetail(tooLong)), /the limit is 1500/, "A 400 says what OpenAlex rejected");
+	const longQuery = `${"word ".repeat(400)}tail`;
+	const cappedQuery = capQuery(longQuery);
+	assert.ok(cappedQuery.length <= SEMANTIC_QUERY_LIMIT && longQuery.startsWith(cappedQuery) && longQuery[cappedQuery.length] === " ", "Semantic queries end on a word boundary within the OpenAlex limit");
+	assert.equal(capQuery("x".repeat(1600)).length, SEMANTIC_QUERY_LIMIT, "A query with no spaces is cut at the limit");
+	assert.equal(capQuery("short query"), "short query");
 
 	const references = new Map<string, Set<string>>([
 		["S", new Set(["A", "B", "C", "D"])],
@@ -858,6 +870,7 @@ async function main(): Promise<void> {
 	await verifyWorkflow();
 	await verifyS2RateLimit();
 	await verifyProviderLimits();
+	await verifyOpenAlexCache();
 	await verifyResearchLibrary();
 	unit();
 	await verifyWorkIdentityPipeline();

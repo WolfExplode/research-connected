@@ -97,9 +97,10 @@ if (prod) {
 		throw new Error('main.js must not contain require("electron")');
 	}
 	// Desktop-only (manifest isDesktopOnly): Node's file APIs reach the research repository's shared
-	// provider pauses, and child processes run its research CLI and availability worker
-	// (src/research-tools.ts). Anything else needs an explicit decision here.
-	const allowed = new Set(["obsidian", "fs", "path", "child_process"]);
+	// provider pauses and OpenAlex response cache (crypto hashes its keys, zlib compresses it), and
+	// child processes run its research CLI and availability worker (src/research-tools.ts).
+	// Anything else needs an explicit decision here.
+	const allowed = new Set(["obsidian", "fs", "path", "child_process", "crypto", "zlib"]);
 	const requires = [...source.matchAll(/require\(["']([^"']+)["']\)/g)].map((match) => match[1]);
 	const foreign = requires.filter((id) => !allowed.has(id));
 	if (foreign.length > 0) {

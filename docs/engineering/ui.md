@@ -41,8 +41,8 @@ comparison and positioning without reranking membership. Screening and PDF retri
 similarity distances because their ranks are not similarity scores. Embeds use the same explicit
 task selection rather than starting a new search when a radial layout is selected.
 
-Wider literature sends the source title and abstract (or a local study summary) to OpenAlex semantic
-search, then reranks up to 50 returned candidates using the plugin's Text comparison. Do not label
+Wider literature sends the source title and abstract (or a local study summary), capped at OpenAlex's
+1,500-character search limit, to OpenAlex semantic search, then reranks up to 50 returned candidates using the plugin's Text comparison. Do not label
 this as an exhaustive search or a global nearest-neighbor guarantee. The Show count is a display
 limit; it does not expand the provider's query cap. Both deduplicates literature and library
 holdings by DOI/OpenAlex identity. Keep provider limits in the summary's shared hover hint.

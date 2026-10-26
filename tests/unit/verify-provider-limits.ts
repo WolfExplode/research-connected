@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
+import { OpenAlexClient } from "../../src/openalex";
 import { limitedRequest, ProviderPausedError, resetProviderLimits, setProviderPauseStore, type ProviderPause } from "../../src/provider-limits";
 
 const failure = (status: number, retryAfter?: number) => Object.assign(new Error(`HTTP ${status}`), { status, retryAfter });
@@ -49,6 +50,16 @@ export async function verifyProviderLimits(): Promise<void> {
 		await assert.rejects(limitedRequest("https://www.ebi.ac.uk/europepmc/x", async () => { calls++; throw failure(404); }));
 		assert.equal(calls, 1);
 		assert.equal(await limitedRequest("https://llm.example/v1/chat", async () => "direct"), "direct");
+
+		// Two clients asking OpenAlex for the same work at once share one request; later asks go again.
+		resetProviderLimits();
+		let gets = 0;
+		const getJson = async () => { gets++; await delay(20); return { id: "https://openalex.org/W1", display_name: "Shared" }; };
+		const auth = { apiKey: "", contactEmail: "" };
+		const [a, b] = await Promise.all([new OpenAlexClient(getJson, auth).workByDoi("10.1/shared"), new OpenAlexClient(getJson, auth).workByDoi("10.1/shared")]);
+		assert.equal(gets, 1); assert.equal(a, b);
+		await new OpenAlexClient(getJson, auth).workByDoi("10.1/shared");
+		assert.equal(gets, 2);
 	} finally {
 		setProviderPauseStore(null);
 		resetProviderLimits();

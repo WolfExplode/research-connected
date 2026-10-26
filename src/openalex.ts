@@ -3,6 +3,22 @@ import { tr } from "./i18n";
 import { OPENALEX_API } from "./constants";
 import { limitedRequest, ProviderPausedError } from "./provider-limits";
 
+const inFlight = new Map<string, Promise<unknown>>();
+
+/** Responses kept between sessions; `read` resolves undefined on a miss. */
+export interface OpenAlexCacheStore {
+	read(url: string): Promise<unknown>;
+	write(url: string, body: unknown): Promise<void>;
+}
+
+let responseCache: OpenAlexCacheStore | null = null;
+export function setOpenAlexCache(next: OpenAlexCacheStore | null): void { responseCache = next; }
+
+export interface OpenAlexClientOptions {
+	/** Skip stored responses (reload, retry); new responses are still stored. */
+	fresh?: boolean;
+}
+
 export interface RawWork {
 	id?: string;
 	display_name?: string;
@@ -63,7 +79,27 @@ export class OpenAlexError extends Error {
 	}
 }
 
-export function explainStatus(status: number | undefined): string {
+/** OpenAlex rejects longer search strings with HTTP 400 unless the key is on a paid plan. */
+export const SEMANTIC_QUERY_LIMIT = 1500;
+
+/** Cut at the last space within the limit so the query never ends mid-word. */
+export function capQuery(text: string, limit = SEMANTIC_QUERY_LIMIT): string {
+	if (text.length <= limit) return text;
+	const head = text.slice(0, limit + 1), space = head.lastIndexOf(" ");
+	return (space > 0 ? head.slice(0, space) : text.slice(0, limit)).trimEnd();
+}
+
+/** The first sentence of an OpenAlex error body, which names what was wrong with the request. */
+export function openAlexErrorDetail(body: unknown): string {
+	if (!body || typeof body !== "object") return "";
+	const { message, error } = body as { message?: unknown; error?: unknown };
+	const text = typeof message === "string" && message.trim() ? message : typeof error === "string" ? error : "";
+	const sentence = text.trim().match(/^.*?[.!?](?=\s|$)/)?.[0] ?? text.trim();
+	return sentence.slice(0, 300);
+}
+
+export function explainStatus(status: number | undefined, detail = ""): string {
+	if (status === 400 && detail) return tr(`OpenAlex 拒绝了请求：${detail}`, `OpenAlex rejected the request: ${detail}`);
 	if (status === 404) return tr("OpenAlex 里没有找到这篇作品。", "This work was not found in OpenAlex.");
 	if (status === 401 || status === 403) return tr("OpenAlex 拒绝了 API 密钥。请在设置里检查。", "OpenAlex rejected the API key. Check settings.");
 	if (status === 429 || status === 402 || status === 409) {
@@ -81,6 +117,7 @@ export class OpenAlexClient {
 	constructor(
 		private readonly getJson: GetJson,
 		private readonly auth: OpenAlexAuth,
+		private readonly options: OpenAlexClientOptions = {},
 	) {}
 
 	workByDoi(doi: string): Promise<RawWork> {
@@ -102,7 +139,7 @@ export class OpenAlexClient {
 	/** Semantic retrieval searches the index, independently of a citation neighborhood. */
 	semanticWorks(query: string): Promise<RawWork[]> {
 		const url = new URL(`${OPENALEX_API}/works`);
-		url.searchParams.set("search.semantic", query.slice(0, 2000));
+		url.searchParams.set("search.semantic", capQuery(query));
 		url.searchParams.set("per_page", "50");
 		url.searchParams.set("select", WORK_SELECT);
 		return this.getResults(url);
@@ -268,17 +305,38 @@ export class OpenAlexClient {
 		return results.filter((item): item is RawWork => Boolean(item) && typeof item === "object");
 	}
 
-	private async get(url: URL): Promise<unknown> {
+	private get(url: URL): Promise<unknown> {
 		const email = validEmail(this.auth.contactEmail);
 		if (email) url.searchParams.set("mailto", email);
-		try {
-			const json = await limitedRequest(url.toString(), () => this.getJson(url.toString(), { headers: this.headers() }));
-			reportFetched({ works: openAccessWorks(json) });
-			return json;
-		} catch (error) {
-			if (error instanceof OpenAlexError || error instanceof ProviderPausedError) throw error;
-			throw new OpenAlexError(explainStatus(undefined));
-		}
+		const headers = this.headers();
+		// Panes and embeds asking for the same URL at once share one request; between requests,
+		// responses are kept only in the on-disk cache, not in memory.
+		const fresh = this.options.fresh === true;
+		const key = `${url.toString()}\n${headers.Authorization ?? ""}\n${fresh}`;
+		const shared = inFlight.get(key);
+		if (shared) return shared;
+		const request = (async () => {
+			try {
+				const cache = responseCache;
+				if (cache && !fresh) {
+					// A paused service can still answer from disk, so the cache is read before the lane.
+					const cached = await cache.read(url.toString()).catch(() => undefined);
+					if (cached !== undefined) return cached;
+				}
+				const json = await limitedRequest(url.toString(), () => this.getJson(url.toString(), { headers }));
+				reportFetched({ works: openAccessWorks(json) });
+				// A full or read-only disk only costs a refetch next time.
+				if (cache) void cache.write(url.toString(), json).catch(() => undefined);
+				return json;
+			} catch (error) {
+				if (error instanceof OpenAlexError || error instanceof ProviderPausedError) throw error;
+				throw new OpenAlexError(explainStatus(undefined));
+			} finally {
+				inFlight.delete(key);
+			}
+		})();
+		inFlight.set(key, request);
+		return request;
 	}
 
 	private headers(): Record<string, string> {

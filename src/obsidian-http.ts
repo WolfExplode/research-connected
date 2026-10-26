@@ -1,6 +1,6 @@
 import { tr } from "./i18n";
 import { requestUrl } from "obsidian";
-import { explainStatus, OpenAlexError, type GetJson } from "./openalex";
+import { explainStatus, OpenAlexError, openAlexErrorDetail, type GetJson } from "./openalex";
 import { retryAfterMs } from "./provider-limits";
 
 /** Non-OpenAlex hosts routed through obsidianGetJson, so their errors name the right service. */
@@ -19,9 +19,9 @@ function serviceName(url: string): string {
 	}
 }
 
-function explainGet(url: string, status: number | undefined): string {
+function explainGet(url: string, status: number | undefined, body?: () => unknown): string {
 	const name = serviceName(url);
-	if (name === "OpenAlex") return explainStatus(status);
+	if (name === "OpenAlex") return explainStatus(status, status === 400 && body ? openAlexErrorDetail(safely(body)) : "");
 	if (status === 401 || status === 403) return tr(`${name} 拒绝了 API 密钥。请在设置里检查。`, `${name} rejected the API key. Check settings.`);
 	if (status === 429 || status === 402 || status === 409) {
 		return tr(`${name} 额度已用完或请求过快。可在设置中填写 API 密钥，或稍后再试。`, `${name} rate limit reached. Add an API key in settings or try again later.`);
@@ -44,7 +44,8 @@ export const obsidianGetJson: GetJson = async (url, init) => {
 		throw new OpenAlexError(explainGet(url, undefined));
 	}
 	if (response.status >= 400) {
-		throw new OpenAlexError(explainGet(url, response.status), response.status, retryAfter(response.headers));
+		const failed = response;
+		throw new OpenAlexError(explainGet(url, failed.status, () => failed.json as unknown), failed.status, retryAfter(failed.headers));
 	}
 	try {
 		const json: unknown = response.json;
@@ -86,6 +87,15 @@ function postServiceName(url: string): string {
 		return SERVICE_NAME[new URL(url).hostname] ?? tr("LLM 服务", "LLM service");
 	} catch {
 		return tr("LLM 服务", "LLM service");
+	}
+}
+
+/** requestUrl parses the body lazily and throws when it is not JSON. */
+function safely(read: () => unknown): unknown {
+	try {
+		return read();
+	} catch {
+		return undefined;
 	}
 }
 

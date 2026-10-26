@@ -402,7 +402,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		else if (/^W\d+$/i.test(paper.id)) await buildResolved({ kind: "openalex", value: paper.id }, true);
 		return graph !== previous;
 	}, syncSubmitAction, createComparisonCitations(() => client()), { controlsHost: form, before: submit,
-		literature: createLiteratureSearch(() => client(), () => deps.getSettings().excludeRetracted) });
+		literature: createLiteratureSearch(fresh => client(fresh), () => deps.getSettings().excludeRetracted) });
 	function refreshSimilarityScores(): void {
 		surface.apiStatus.refresh();
 		map.setDistanceScale(surface.distanceScale.value === "absolute" ? "absolute" : "relative");
@@ -1968,12 +1968,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 		persistProject(next);
 	};
-	const client = (): OpenAlexClient => {
+	// `fresh` skips stored OpenAlex responses; only Reload asks for it.
+	const client = (fresh = false): OpenAlexClient => {
 		const settings = deps.getSettings();
 		return new OpenAlexClient(deps.getJson, {
 			apiKey: settings.apiKey,
 			contactEmail: settings.contactEmail,
-		});
+		}, { fresh });
 	};
 	const reconcileSource = (): SemanticScholarClient | null => {
 		if (!deps.postJson) return null;
@@ -2031,7 +2032,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		finally { if (!disposed && token === generation) setBusy(false); }
 	}
 
-	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }, refresh = false): Promise<void> => {
+	const buildResolved = async (target: { kind: "doi" | "openalex"; value: string }, refresh = false, fresh = false): Promise<void> => {
 		if (exploreMode === "similar") { await resolveSimilaritySource(target); return; }
 		if (exploreMode !== "citation") setExploreMode("citation");
 		flushProjectSave();
@@ -2068,7 +2069,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		infoBar.notify(STAGE_TEXT.resolving, "busy");
 		try {
 			const settings = deps.getSettings();
-			const oa = client();
+			const oa = client(fresh);
 			const next = await loadNeighborhood(
 				oa,
 				target,
@@ -2224,7 +2225,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const seedId = currentSeedId();
 		if (!seedId || reload.disabled) return;
 		input.value = seedId;
-		void buildResolved({ kind: "openalex", value: seedId }, true);
+		void buildResolved({ kind: "openalex", value: seedId }, true, true);
 	});
 	surface.diversifyResults.addEventListener("change", () => {
 		const settings = deps.getSettings();

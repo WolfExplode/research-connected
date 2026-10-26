@@ -20,7 +20,7 @@ export async function verifyLiterature(root: HTMLElement): Promise<void> {
 		citedByCount: 1, openAlexUrl: "https://openalex.org/W1", language: "en", workType: "article", venue: null, retracted: false, concepts: [] };
 	const graph: SimilarityGraph = { nodes: [seed], edges: [], catalog: [seed], referenceLists: new Map(), seedScore: new Map([[seed.id, 1]]),
 		warnings: [], skippedNonResearch: 0, strategies: { references: false, citations: false, related: false } };
-	check(literatureQuery({ ...seed, title: "x".repeat(2500) }).length === 2000, "semantic input respects the provider character cap");
+	check(literatureQuery({ ...seed, title: "x".repeat(2500) }).length === 1500, "semantic input respects the provider character cap");
 	const remote = { id: "https://openalex.org/W90", display_name: "Cardiac fitness and autonomic modulation", doi: "https://doi.org/10.1234/new", type: "article" };
 	const stage = document.createElement("div"); root.append(stage);
 	let calls = 0, fail = false, resolve!: (value: unknown) => void;

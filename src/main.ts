@@ -8,6 +8,8 @@ import { PaperAvailabilityModal, PaperLabelsModal } from "./paper-labels";
 import { setProviderPauseStore } from "./provider-limits";
 import { setFetchedEvidenceSink } from "./fetched-evidence";
 import { providerPauseFiles } from "./provider-pause-file";
+import { openAlexCacheFiles } from "./openalex-cache-file";
+import { setOpenAlexCache } from "./openalex";
 import { LOGO_ICON, LOGO_SVG } from "./logo";
 import { tr } from "./i18n";
 import { VIEW_TYPE } from "./constants";
@@ -39,7 +41,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 		this.applyResearchTools();
 		// Vectors and open-access fields that graph builds fetch go to the research tools' caches.
 		setFetchedEvidenceSink(evidence => this.researchLibrary()?.queueFetched(evidence));
-		this.register(() => { setProviderPauseStore(null); setFetchedEvidenceSink(null); this.library?.dispose(); this.library = null; });
+		this.register(() => { setProviderPauseStore(null); setOpenAlexCache(null); setFetchedEvidenceSink(null); this.library?.dispose(); this.library = null; });
 
 		// Main-area tab. The graph pane is the product, not a sidebar card list.
 		this.registerView(VIEW_TYPE, (leaf) => new ConnectedPapersView(leaf, this));
@@ -205,10 +207,11 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 	private toolsKey(): string { return `${this.researchRepository() ?? ""}|${this.settings.researchNode}`; }
 
-	/** Shares rate-limit pauses with the configured repository and rebuilds the library when it changed. */
+	/** Shares rate-limit pauses and OpenAlex responses with the configured repository and rebuilds the library when it changed. */
 	private applyResearchTools(): void {
 		const repository = this.researchRepository();
 		try { setProviderPauseStore(repository ? providerPauseFiles(repository) : null); } catch { setProviderPauseStore(null); /* In-memory pauses still apply. */ }
+		try { setOpenAlexCache(repository ? openAlexCacheFiles(repository) : null); } catch { setOpenAlexCache(null); /* Requests still work uncached. */ }
 		if (this.toolsKey() === this.libraryKey) return;
 		this.library?.dispose(); this.library = null; this.libraryKey = null;
 		window.dispatchEvent(new Event("research-connected-library-changed"));
