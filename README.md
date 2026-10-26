@@ -18,7 +18,7 @@ Select a node or an edge to see shared references, co-citations, and direct cita
 
 ## What you can do
 
-- **Discover related research.** Enter a title, DOI, or OpenAlex ID and build a sampled similarity map. Switch among Planar, Timeline, and Similarity views. Similarity fixes the comparison paper at the center and places other papers at score-defined distances. Drag a paper around its orbit to untangle overlaps; its distance stays fixed. Select a paper for score details, or use “Compare against this paper” in its context menu to rebuild around it. No local PDFs are required.
+- **Discover related research.** Enter a title, DOI, or OpenAlex ID and build a sampled similarity map. Switch among Planar, Timeline, and Similarity views. Similarity offers Text and Citations subviews around a fixed comparison paper. Text includes SPECTER2 where available, with an explicit word-overlap fallback; Citations uses citation evidence only. Stored library vectors are reused automatically. Similarity defaults to searching all local source notes; scope can use My library, sampled External candidates, or Both, with compared/displayed counts. Graph options includes Relative (default) and Absolute distance scales without changing actual scores. Switching subviews preserves your viewport and node angles. Drag a paper around its orbit to untangle overlaps; its distance stays fixed. Select a paper for score details, or use “Compare against this paper” in its context menu to rebuild around it. No local PDFs are required.
 - **Inspect each connection.** Read the references and citation evidence behind a relationship. Semantic Scholar, Crossref, and OpenCitations fill gaps and flag mismatched records.
 - **Organize your reading.** Stage papers, mark them to read or read, exclude noise, and save named views. Write literature notes, embed the graph, or export BibTeX, YAML, and Markdown.
 
@@ -93,6 +93,10 @@ Projects, reading states, saved views, and service credentials are stored in thi
 - **Setup help.** Read the [user guide](https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md) and [check existing issues](https://github.com/Abe-Junwei/research-connected/issues).
 
 English or Chinese is welcome. Submitting requires a GitHub account, and reports are public. Do not include API keys, private notes, unpublished research, a full vault, or `data.json`. A feature request does not promise implementation or a delivery date.
+
+## Development
+
+See [Contributing](CONTRIBUTING.md) for setup and checks, and the [documentation index](docs/README.md) for architecture, UI contracts, integration guidance, and historical proposals.
 
 ## Updates and license
 

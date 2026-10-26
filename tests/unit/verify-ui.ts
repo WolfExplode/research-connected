@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { derivativeWorks, priorWorks } from "../src/aggregates";
-import { CitationEvidenceStore, directEvidence, edgeCitationPairs, evidenceBadges } from "../src/citation-evidence";
-import { evidenceText, focusNodes, SIMILARITY_NOT_CITATION } from "../src/graph-filter";
-import { graphKeyStats } from "../src/filter-controls";
+import { derivativeWorks, priorWorks } from "../../src/aggregates";
+import { CitationEvidenceStore, directEvidence, edgeCitationPairs, evidenceBadges } from "../../src/citation-evidence";
+import { evidenceText, focusNodes, SIMILARITY_NOT_CITATION } from "../../src/graph-filter";
+import { graphKeyStats } from "../../src/filter-controls";
 import {
 	chooseExpand,
 	EXPAND_CAP,
@@ -11,20 +11,20 @@ import {
 	omitNode,
 	refreshDerived,
 	rememberGrafted,
-} from "../src/graph-edit";
-import { buildCommunityRegions } from "../src/community-regions";
-import { buildSimilarity } from "../src/similarity";
-import type { SimilarityGraph } from "../src/neighborhood";
-import { explainRelation } from "../src/relation";
-import { placeLayout } from "../src/layout-modes";
-import { runForceLayout } from "../src/layout";
-import { applyResponsiveMode } from "../src/responsive";
-import { clampSidebarWidth } from "../src/sidebar-resize";
-import { literatureFilename, literatureMarkdown, matchLiteratureNote } from "../src/export-graph";
-import { pageBudget } from "../src/openalex";
-import { restoreGraphSnapshot, saveGraphSnapshot } from "../src/project-state";
-import type { GraphEdge, PaperNode } from "../src/types";
-import { syntheticGraph } from "./perf-fixture";
+} from "../../src/graph-edit";
+import { buildCommunityRegions } from "../../src/community-regions";
+import { buildSimilarity } from "../../src/similarity";
+import type { SimilarityGraph } from "../../src/neighborhood";
+import { explainRelation } from "../../src/relation";
+import { placeLayout } from "../../src/layout-modes";
+import { runForceLayout } from "../../src/layout";
+import { applyResponsiveMode } from "../../src/responsive";
+import { clampSidebarWidth } from "../../src/sidebar-resize";
+import { indexLiteratureFiles, literatureFilename, literatureMarkdown, matchLiteratureNote } from "../../src/export-graph";
+import { pageBudget } from "../../src/openalex";
+import { restoreGraphSnapshot, saveGraphSnapshot } from "../../src/project-state";
+import type { GraphEdge, PaperNode } from "../../src/types";
+import { syntheticGraph } from "../../benchmarks/perf-fixture";
 
 function edge(patch: Partial<GraphEdge>): GraphEdge {
 	return {
@@ -358,6 +358,13 @@ function literatureNotes(): void {
 	const markdown = literatureMarkdown(item, "See {{doi}}", fields);
 	assert.match(markdown, /^---\n/);
 	assert.match(markdown, /rc-status: to-read/);
+	const libraryReading = indexLiteratureFiles([
+		{ path: "library.md", frontmatter: { doi: "10.1000/library", reading_status: "read", "rc-status": "unread" } },
+		{ path: "legacy.md", frontmatter: { doi: "10.1000/legacy", "rc-status": "to-read" } },
+	], "doi");
+	assert.equal(libraryReading.byDoi.get("10.1000/library")?.reading, "read", "Library reading_status takes precedence over plugin status");
+	assert.equal(libraryReading.byDoi.get("10.1000/legacy")?.reading, "to-read", "Legacy plugin notes retain their reading status");
+
 	assert.match(markdown, /See 10\.1000\/xyz/);
 	const files = [
 		{ path: "other.md", frontmatter: { doi: "10.1000/other", openalex: "https://openalex.org/W1", "rc-status": "read" } },

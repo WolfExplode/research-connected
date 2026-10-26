@@ -1,15 +1,15 @@
-import { nicholsSnapshot } from "../preview/work-identity-fixture";
+import { nicholsSnapshot } from "../../preview/work-identity-fixture";
 import assert from "node:assert/strict";
-import { acknowledgeIdentityStates, normalizeProjects, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type ResearchProject, type SavedGraphSnapshot } from "../src/project-state";
-import { graftNodes, normalizeWorkGraph, separateWorkRecords } from "../src/graph-edit";
-import { paperDois, resolveWorkQuery, sameWork, workIndex } from "../src/work-identity";
-import { matchLiteratureNote, toBibTeX } from "../src/export-graph";
-import { resolvePathEndpoint } from "../src/doi-path";
-import { normalizeDoi, shortId } from "../src/paper";
-import { OpenAlexClient, type RawWork } from "../src/openalex";
-import { expandAround, loadNeighborhood, restoreGraftedMembers } from "../src/neighborhood";
-import { DEFAULT_SETTINGS } from "../src/settings-model";
-import type { PaperNode } from "../src/types";
+import { acknowledgeIdentityStates, normalizeProjects, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type ResearchProject, type SavedGraphSnapshot } from "../../src/project-state";
+import { graftNodes, normalizeWorkGraph, separateWorkRecords } from "../../src/graph-edit";
+import { paperDois, resolveWorkQuery, sameWork, workIndex } from "../../src/work-identity";
+import { matchLiteratureNote, toBibTeX } from "../../src/export-graph";
+import { resolvePathEndpoint } from "../../src/doi-path";
+import { normalizeDoi, shortId } from "../../src/paper";
+import { OpenAlexClient, type RawWork } from "../../src/openalex";
+import { expandAround, loadNeighborhood, restoreGraftedMembers } from "../../src/neighborhood";
+import { DEFAULT_SETTINGS } from "../../src/settings-model";
+import type { PaperNode } from "../../src/types";
 
 
 export function verifyWorkIdentity(): void {

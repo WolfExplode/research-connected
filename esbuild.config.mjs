@@ -11,83 +11,44 @@ if you want to view the source, please visit the repository of this plugin.
 
 const mode = process.argv[2] ?? "dev";
 
-if (mode === "verify") {
-	await esbuild.build({
-		entryPoints: ["scripts/verify.ts"],
-		alias: { obsidian: "./scripts/obsidian-stub.ts" },
-		bundle: true,
-		platform: "node",
-		format: "cjs",
-		outfile: "scripts/verify.cjs",
-		logLevel: "info",
-	});
-	process.exit(0);
-}
-
-if (mode === "perf") {
-	await esbuild.build({
-		entryPoints: ["scripts/perf.ts"],
-		alias: { obsidian: "./scripts/obsidian-stub.ts" },
-		bundle: true,
-		platform: "node",
-		format: "cjs",
-		outfile: "scripts/perf.cjs",
-		logLevel: "info",
-	});
-	process.exit(0);
-}
-
-if (mode === "sweep") {
-	await esbuild.build({
-		entryPoints: ["scripts/mmr-sweep.ts"],
-		alias: { obsidian: "./scripts/obsidian-stub.ts" },
-		bundle: true,
-		platform: "node",
-		format: "cjs",
-		outfile: "scripts/mmr-sweep.cjs",
-		logLevel: "info",
-	});
+const nodeEntries = {
+	verify: "tests/unit/verify.ts", perf: "benchmarks/perf.ts", sweep: "benchmarks/mmr-sweep.ts",
+	"live-review": "tests/live/check-review.ts",
+};
+const alias = { obsidian: "./tests/support/obsidian-stub.ts" };
+if (Object.hasOwn(nodeEntries, mode)) {
+	await esbuild.build({ entryPoints: [nodeEntries[mode]], alias, bundle: true, platform: "node", format: "cjs",
+		outfile: `.cache/build/${mode}.cjs`, logLevel: "info" });
 	process.exit(0);
 }
 
 if (mode === "preview") {
-	await esbuild.build({
-		entryPoints: ["preview/main.ts"],
-		alias: { obsidian: "./scripts/obsidian-stub.ts" },
-		bundle: true,
-		platform: "browser",
-		format: "iife",
-		outfile: "preview/preview.js",
-		logLevel: "info",
-	});
-	await esbuild.build({
-		entryPoints: ["preview/embed-main.ts"],
-		alias: { obsidian: "./scripts/obsidian-stub.ts" },
-		bundle: true,
-		platform: "browser",
-		format: "iife",
-		outfile: "preview/embed.js",
-		logLevel: "info",
-	});
+	for (const [entry, output] of [["preview/main.ts", "preview/preview.js"], ["preview/embed-main.ts", "preview/embed.js"]]) {
+		await esbuild.build({ entryPoints: [entry], alias, bundle: true, platform: "browser", format: "iife", outfile: output, logLevel: "info" });
+	}
 	process.exit(0);
 }
 
-if (mode === "review-browser") {
-	mkdirSync(".superdesign/tmp", { recursive: true });
-	await esbuild.build({
-		entryPoints: ["scripts/verify-review-browser.ts"],
-		alias: { obsidian: "./scripts/obsidian-stub.ts" },
-		bundle: true, platform: "browser", format: "iife",
-		outfile: ".superdesign/tmp/review-check.js",
-	});
-	const html = readFileSync("preview/index.html", "utf8")
-		.replace("../styles.css?preview-refresh=17", "../../styles.css")
-		.replace(/<script type="module">[\s\S]*?<\/script>/, '<script type="module" src="review-check.js"></script>');
-	writeFileSync(".superdesign/tmp/review-check.html", html);
+const browserEntries = {
+	review: "tests/browser/review.ts", doi: "tests/browser/doi-recovery.ts", maintenance: "tests/browser/maintenance.ts",
+};
+if (["browser", "review-browser", "doi-browser"].includes(mode)) {
+	const directory = ".cache/build/browser";
+	mkdirSync(directory, { recursive: true });
+	for (const [name, entry] of Object.entries(browserEntries)) {
+		if (mode !== "browser" && name !== (mode === "doi-browser" ? "doi" : "review")) continue;
+		await esbuild.build({ entryPoints: [entry], alias, bundle: true, platform: "browser", format: "iife", outfile: `${directory}/${name}.js` });
+		const html = readFileSync("preview/index.html", "utf8")
+			.replace(/href="[^" ]*styles\.css[^" ]*"/, 'href="../../../styles.css"')
+			.replace(/<script type="module">[\s\S]*?<\/script>/, `<script src="${name}.js"></script>`)
+			.replace(/\r\n/g, "\n");
+		writeFileSync(`${directory}/${name}.html`, html);
+	}
 	process.exit(0);
 }
 
 const prod = mode === "production";
+if (!prod && mode !== "dev") throw new Error(`Unknown build mode: ${mode}`);
 
 const context = await esbuild.context({
 	banner: {

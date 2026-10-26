@@ -1,14 +1,20 @@
+import { verifyWorkflow } from "./verify-workflow";
+import { graphApiStatus } from "../../src/api-status";
 // Host timers for offline adapters; browser tests supply the full window.
 if (typeof window === "undefined") Object.assign(globalThis, { window: { setTimeout, clearTimeout } });
 
 import assert from "node:assert/strict";
 import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-identity";
 import { verifyEvidence } from "./verify-evidence";
+import { verifyS2RateLimit } from "./verify-s2-rate-limit";
+import { verifyDoiRecovery } from "./verify-doi-recovery";
+import { verifyComparison } from "./verify-comparison";
+import { verifyConnections } from "./verify-connections";
 import { verifyUi } from "./verify-ui";
-import { classicInfluence, classicNodeIds, derivativeWorks, priorWorks } from "../src/aggregates";
-import { detectCommunities } from "../src/communities";
-import { buildCommunityCircles, buildCommunityRegions, communityTopicLabels, hitCommunityCircle, hitCommunityRegion } from "../src/community-regions";
-import { parseEmbed } from "../src/embed-syntax";
+import { classicInfluence, classicNodeIds, derivativeWorks, priorWorks } from "../../src/aggregates";
+import { detectCommunities } from "../../src/communities";
+import { buildCommunityCircles, buildCommunityRegions, communityTopicLabels, hitCommunityCircle, hitCommunityRegion } from "../../src/community-regions";
+import { parseEmbed } from "../../src/embed-syntax";
 import {
 	edgeVisible,
 	emptyFilter,
@@ -16,27 +22,27 @@ import {
 	focusNodes,
 	nodeVisible,
 	type GraphFilter,
-} from "../src/graph-filter";
-import { authorYear, citationLabelAlpha, shortAuthor } from "../src/labels";
-import { placeLayout } from "../src/layout-modes";
-import { citationRadius, classicBreath, CLASSIC_BREATH_MS, fitViewScale, yearNormalizedCitations } from "../src/visual";
-import type { SimilarityGraph } from "../src/neighborhood";
-import { explainRelation, relationKind } from "../src/relation";
-import type { GraphEdge } from "../src/types";
-import { runForceLayout } from "../src/layout";
-import { diagnoseCandidate, loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../src/neighborhood";
-import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../src/openalex";
-import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../src/paper";
-import { paperStateBadges } from "../src/citation-evidence";
-import { allowedExternalUrl } from "../src/safe-url";
-import { DEFAULT_SETTINGS } from "../src/settings-model";
-import { restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, type ResearchProject } from "../src/project-state";
-import { buildSimilarity, pairScore } from "../src/similarity";
-import { buildSemanticScorer, embeddingCosine, tokenize } from "../src/text-similarity";
-import { buildPairSimilarity } from "../src/diversity";
-import { topicSimilarity, topicSimilarityColor } from "../src/topic-similarity";
-import { CrossrefClient, SemanticScholarClient } from "../src/citation-sources";
-import type { PaperNode } from "../src/types";
+} from "../../src/graph-filter";
+import { authorYear, citationLabelAlpha, shortAuthor } from "../../src/labels";
+import { placeLayout } from "../../src/layout-modes";
+import { citationRadius, classicBreath, CLASSIC_BREATH_MS, fitViewScale, yearNormalizedCitations } from "../../src/visual";
+import type { SimilarityGraph } from "../../src/neighborhood";
+import { explainRelation, relationKind } from "../../src/relation";
+import type { GraphEdge } from "../../src/types";
+import { runForceLayout } from "../../src/layout";
+import { diagnoseCandidate, loadNeighborhood, selectNeighbors, countsMismatched, type CrossrefReferenceSource, type ReconcileSource } from "../../src/neighborhood";
+import { explainStatus, OpenAlexClient, OpenAlexError, type GetJson } from "../../src/openalex";
+import { classifyQuery, normalizeDoi, reconstructAbstract, toPaper } from "../../src/paper";
+import { paperStateBadges } from "../../src/citation-evidence";
+import { allowedExternalUrl, providerExternalUrl } from "../../src/safe-url";
+import { DEFAULT_SETTINGS } from "../../src/settings-model";
+import { restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, type ResearchProject } from "../../src/project-state";
+import { buildSimilarity, pairScore } from "../../src/similarity";
+import { buildSemanticScorer, embeddingCosine, tokenize } from "../../src/text-similarity";
+import { buildPairSimilarity } from "../../src/diversity";
+import { topicSimilarity, topicSimilarityColor } from "../../src/topic-similarity";
+import { CrossrefClient, SemanticScholarClient } from "../../src/citation-sources";
+import type { PaperNode } from "../../src/types";
 
 function weighted(source: string, target: string, weight: number): GraphEdge {
 	return {
@@ -265,6 +271,19 @@ function unit(): void {
 	assert.equal(allowedExternalUrl("https://doi.org:8443/10.1038/nature14539"), null);
 	assert.equal(allowedExternalUrl("https://evil.example/phish"), null);
 	assert.equal(allowedExternalUrl("javascript:alert(1)"), null);
+	assert.deepEqual(graphApiStatus(null, null, "", false), []);
+	const apiNotices = graphApiStatus(null, null, "fetch failed", true);
+	assert.equal(apiNotices.length, 2);
+	assert.ok(apiNotices.some(message => message.includes("OpenCitations")));
+	assert.ok(apiNotices.some(message => message.includes("fetch failed")));
+
+	for (const url of ["https://publisher.example/paper.pdf", "http://repository.example/paper", "https://sci-hub.example/10.1234/test"]) {
+		assert.equal(providerExternalUrl(url), url, "Provider links must reach the browser regardless of domain");
+	}
+	for (const url of ["javascript:alert(1)", "file:///tmp/paper.pdf", "data:text/html,test", "https://user:pass@example.org/paper", "invalid"]) {
+		assert.equal(providerExternalUrl(url), null, "Reject unsafe provider URLs");
+	}
+
 
 	assert.match(explainStatus(404), /没有找到/);
 	assert.match(explainStatus(429), /额度/);
@@ -784,6 +803,11 @@ function diversityChecks(): void {
 	assert.equal([...noMmr].filter((id) => id.startsWith("D")).length, 0, "无 MMR 时克隆体占满名额");
 	const mmr = { sim: buildPairSimilarity([...clones, ...distinct]), lambda: 0.5 };
 	const withMmr = selectNeighbors(pickSettings, groups, "SEED", rel, mmr).map((p) => p.id);
+	assert.deepEqual(
+		new Set(selectNeighbors({ ...pickSettings, diversifyResults: false }, groups, "SEED", rel, mmr).map(p => p.id)),
+		noMmr,
+		"Disabling diversity removes the penalty even when pair similarity is available",
+	);
 	assert.equal(withMmr.filter((id) => id.startsWith("D")).length, 5, "MMR 挤出克隆体，纳入相异候选");
 	assert.equal(withMmr[0], "C0", "MMR 首项仍是最高相关性");
 	assert.deepEqual(
@@ -829,11 +853,16 @@ function diversityChecks(): void {
 }
 
 async function main(): Promise<void> {
+	await verifyWorkflow();
+	await verifyS2RateLimit();
 	unit();
 	await verifyWorkIdentityPipeline();
 	semanticChecks();
 	diversityChecks();
 	await verifyEvidence();
+	await verifyDoiRecovery();
+	verifyComparison();
+	verifyConnections();
 	verifyUi();
 	await cursorPaging();
 	await reconcileOffline();
@@ -1008,15 +1037,16 @@ async function reconcileOffline(): Promise<void> {
 	});
 	const counts = await s2.bulkCounts(["10.1/x"], { embedding: true });
 	assert.equal(counts.get("10.1/x")?.citationCount, 7, "embedding 被拒后仍拿到计数");
+	assert.equal(requestedFields[0], "citationCount,referenceCount,externalIds,embedding.specter_v2", "SPECTER2 requires an explicitly versioned API field");
 	assert.ok(requestedFields.some((f) => !f.includes("embedding")), "失败后降级为纯计数请求");
 
 	// 正常返回 embedding：解析向量与模型名。
 	const s2ok = new SemanticScholarClient(async () => ({}), "", async () => [
-		{ externalIds: { DOI: "10.1/y" }, citationCount: 1, referenceCount: 1, embedding: { model: "specter2", vector: [0.1, 0.2] } },
+		{ externalIds: { DOI: "10.1/y" }, citationCount: 1, referenceCount: 1, embedding: { model: "specter_v2", vector: Array(768).fill(0.1) } },
 	]);
 	const okCounts = await s2ok.bulkCounts(["10.1/y"], { embedding: true });
-	assert.deepEqual(okCounts.get("10.1/y")?.embedding, [0.1, 0.2]);
-	assert.equal(s2ok.embeddingModel, "specter2");
+	assert.deepEqual(okCounts.get("10.1/y")?.embedding, Array(768).fill(0.1));
+	assert.equal(s2ok.embeddingModel, "specter_v2");
 	const crossrefClient = new CrossrefClient(async (url) => {
 		assert.match(url, /api\.crossref\.org\/works\/10\.1\/test/);
 		return { message: { abstract: "<jats:p>Uses &amp; tests</jats:p>", reference: [{ DOI: "10.1/ref" }, { unstructured: "No DOI" }] } };

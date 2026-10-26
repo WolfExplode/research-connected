@@ -17,7 +17,8 @@ assert.ok(graph.edges.every(edge => edge.source === "discovery:query" && edge.di
 assert.equal(JSON.stringify(ranked), before, "source output must remain unchanged");
 
 const similar = buildDiscoveryGraph({ engine: "asreview", mode: "similar", source: row("Seed"), papers: [row("Seed", { similarity: 100 }), row("Neighbor", { similarity: 42 }), row("Neighbor", { similarity: 42 }), row("Zero", { similarity: 0 })] });
-assert.equal(similar.nodes.length, 2);
+assert.equal(similar.nodes.length, 3, "zero similarity is a real low score, not missing evidence");
+assert.equal(similar.seedScore.get('local:Research/Papers/Zero.md'), 0);
 assert.equal(similar.edges[0].weight, 0.42);
 assert.equal(similar.nodes[1].doiUrl, null, "DOI-less local papers retain their file identity");
 
@@ -30,7 +31,7 @@ for (const path of ["../file.pdf", "C:/private.pdf", "https://example.org/paper.
 assert.throws(() => buildDiscoveryGraph({ engine: "paperqa", mode: "index", papers: [] }), /Invalid/);
 console.log("discovery graphs preserve ranking, retrieval order, local identity and non-citation semantics");
 
-const workspaceBundle = await build({ entryPoints: ["src/question-workspace.ts", "src/project-state.ts"], bundle: true, platform: "node", format: "cjs", alias: { obsidian: "./scripts/obsidian-stub.ts" }, write: false, outdir: "/unused" });
+const workspaceBundle = await build({ entryPoints: ["src/question-workspace.ts", "src/project-state.ts"], bundle: true, platform: "node", format: "cjs", alias: { obsidian: "./tests/support/obsidian-stub.ts" }, write: false, outdir: "/unused" });
 const modules = workspaceBundle.outputFiles.map(file => {
 	const module = { exports: {} }; new Function("module", "exports", file.text)(module, module.exports); return module.exports;
 });

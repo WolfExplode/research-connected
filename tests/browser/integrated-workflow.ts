@@ -1,8 +1,8 @@
-import { mountGraphApp } from "../src/app";
-import { DEFAULT_SETTINGS } from "../src/settings-model";
-import { saveGraphSnapshot } from "../src/project-state";
-import type { DiscoveryPayload, DiscoveryRequest } from "../src/discovery-graph";
-import type { PaperNode } from "../src/types";
+import { mountGraphApp } from "../../src/app";
+import { DEFAULT_SETTINGS } from "../../src/settings-model";
+import { saveGraphSnapshot } from "../../src/project-state";
+import type { DiscoveryPayload, DiscoveryRequest } from "../../src/discovery-graph";
+import type { PaperNode } from "../../src/types";
 
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
@@ -43,6 +43,7 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 		check(root.querySelector(".cpo-detail")?.textContent?.includes("ASReview") || root.textContent?.includes("ASReview priority percentile"), "ranking must appear in the main details panel");
 		check(root.querySelector("canvas") === canvas && root.querySelectorAll("canvas").length === 1, "discovery must reuse the main canvas");
 		check(root.querySelector<HTMLElement>(".cpo-project-group:not(.cpo-question-group)")?.hidden, "citation graph controls must be hidden for local results");
+		check(root.querySelector<HTMLInputElement>(".cpo-diversify-results")?.disabled, "diversity must be disabled for local discovery results");
 		mode("search");
 		root.querySelector<HTMLButtonElement>(".cpo-explore-tools .cpo-ghost")!.click();
 		check(requests[2]?.request.action === "index" && requests[2]!.request.question === second && requests[2]!.request.selection?.[0]?.title === "Current ranked paper", "PDF indexing must reuse this question's ranking");
@@ -56,6 +57,15 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 		check(select("Citation graph").value === "W1", "returning to citation mode must restore its graph");
 		check(JSON.stringify(settings.researchProjects.W1!.snapshot?.nodes) === JSON.stringify(snapshot.nodes), "local results must never overwrite the citation snapshot");
 		check(networkCalls === 0, "local mode switches must not fetch citation data");
+		handle.openDiscovery({ payload: { engine: "asreview", mode: "similar", scoring: "specter2+words-v1",
+			source: { title: "Comparison source", note: "Research/Papers/Source.md" },
+			papers: [{ title: "Semantic neighbor", note: "Research/Papers/Neighbor.md", similarity: 62.5,
+				text_comparison: { score: 0.625, method: "specter2+words", lexical: 0.25, embedding: 0.75 } }] } });
+		root.querySelector<HTMLButtonElement>('[data-layout="radial"]')!.click();
+		check(!root.querySelector<HTMLButtonElement>('[data-similarity="citations"]')?.disabled, "local papers can remain visible in Citations with unavailable evidence");
+		check(root.querySelector(".cpo-detail")?.textContent?.includes("SPECTER2") && root.querySelector(".cpo-detail")?.textContent?.includes("0.63"), "local details expose the actual SPECTER2 scoring method and decimal score");
+		root.querySelector<HTMLButtonElement>('[data-similarity="citations"]')!.click();
+		check(root.querySelector(".cpo-detail")?.textContent?.includes("Citation similarity: unavailable"), "membership edges never become citation similarity claims");
 		mode("rank"); run(); handle.destroy(); requests[4]!.resolve(payload(first, "Result after disposal")); await tick();
 		check(root.childElementCount === 0, "disposed workspaces must ignore late results");
 		return "PASS: shared canvas and question, ranking and PDF details, scoped indexing, session reuse, stale-result guards, citation preservation, cleanup";

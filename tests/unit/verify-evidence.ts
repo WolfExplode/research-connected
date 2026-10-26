@@ -6,15 +6,15 @@ import {
 	evidenceFromSemanticCitation,
 	mergeOpenCitation,
 	mergeS2CitationsForPair,
-} from "../src/citation-evidence";
-import { doisFromOpenCitation, SemanticScholarClient } from "../src/citation-sources";
-import { SimilarityMap } from "../src/map-canvas";
-import { similarityRadius } from "../src/layout-modes";
-import { buildNarrativeEvidence, validateNarrative } from "../src/narrative";
-import { summarizeWithLlmPost } from "../src/llm";
-import type { SimilarityGraph } from "../src/neighborhood";
-import type { GraphEdge, PaperNode } from "../src/types";
-import { normalizeDoi } from "../src/paper";
+} from "../../src/citation-evidence";
+import { doisFromOpenCitation, SemanticScholarClient } from "../../src/citation-sources";
+import { SimilarityMap } from "../../src/map-canvas";
+import { radialDistanceScores, similarityRadius } from "../../src/layout-modes";
+import { buildNarrativeEvidence, validateNarrative } from "../../src/narrative";
+import { summarizeWithLlmPost } from "../../src/llm";
+import type { SimilarityGraph } from "../../src/neighborhood";
+import type { GraphEdge, PaperNode } from "../../src/types";
+import { normalizeDoi } from "../../src/paper";
 import {
 	groupStagedBySeed,
 	normalizeStagedList,
@@ -22,9 +22,9 @@ import {
 	stageSourceLabel,
 	toggleStaged,
 	wrapStagedList,
-} from "../src/staging";
-import { findBudgetedCitationPath, resolvePathEndpoint } from "../src/doi-path";
-import { shortId } from "../src/paper";
+} from "../../src/staging";
+import { findBudgetedCitationPath, resolvePathEndpoint } from "../../src/doi-path";
+import { shortId } from "../../src/paper";
 
 export async function verifyEvidence(): Promise<void> {
 	const paper = (id: string, seed = false): PaperNode => ({
@@ -231,5 +231,27 @@ export async function verifyEvidence(): Promise<void> {
 	assert.ok(orbit.nodes.find(node => node.id === later.id)!.x >= 360, "missing scores go in a separate area");
 	assert.equal(similarityRadius(0), 278, "zero is a valid low-similarity score");
 	assert.equal(similarityRadius(NaN), null, "nonfinite scores are unavailable");
+	const comparisonView = map.getViewState();
+	const oldAngle = Math.atan2(updated.y, updated.x);
+	map.setComparisonScores(new Map([[prior.id, 0.2]]), "citations");
+	const compared = orbit.nodes.find(node => node.id === prior.id)!;
+	assert.ok(Math.abs(Math.atan2(compared.y, compared.x) - oldAngle) < 1e-9, "switching metrics preserves the user's angle");
+	assert.ok(Math.abs(Math.hypot(compared.x, compared.y) - similarityRadius(0.2)!) < 1e-9, "the selected metric controls distance");
+	assert.deepEqual(map.getViewState(), { ...comparisonView, similarityKind: "citations" }, "switching metrics keeps zoom, pan and selection");
+	const rawScores = new Map([[seed.id, 1], [prior.id, 0.2], [later.id, 0.1]]);
+	map.setComparisonScores(rawScores, "text");
+	const beforeScale = map.getViewState();
+	const angleBeforeScale = Math.atan2(orbit.nodes.find(node => node.id === prior.id)!.y, orbit.nodes.find(node => node.id === prior.id)!.x);
+	map.setDistanceScale("relative");
+	const close = orbit.nodes.find(node => node.id === prior.id)!, distant = orbit.nodes.find(node => node.id === later.id)!;
+	assert.ok(Math.abs(Math.hypot(close.x, close.y) - 78) < 1e-9, "relative scale brings the best displayed match to the inner orbit");
+	assert.ok(Math.abs(Math.hypot(distant.x, distant.y) - 278) < 1e-9, "relative scale places the weakest displayed match at the outer orbit");
+	assert.ok(Math.abs(Math.atan2(close.y, close.x) - angleBeforeScale) < 1e-9, "changing distance scale preserves angles");
+	assert.deepEqual(map.getViewState(), { ...beforeScale, distanceScale: "relative" }, "distance scale preserves viewport and selection");
+	assert.equal(rawScores.get(prior.id), 0.2, "distance scaling never changes the real score");
+	map.setDistanceScale("absolute");
+	assert.ok(Math.abs(Math.hypot(orbit.nodes.find(node => node.id === prior.id)!.x, orbit.nodes.find(node => node.id === prior.id)!.y) - similarityRadius(0.2)!) < 1e-9, "absolute distance can be restored");
+	assert.deepEqual(radialDistanceScores([seed, prior, later], new Map([[prior.id, 0.1], [later.id, 0.1]]), "relative"), new Map([[prior.id, 0.5], [later.id, 0.5]]), "equal scores share an orbit without inventing differences");
+	assert.equal(radialDistanceScores([seed, prior], new Map([[prior.id, 0]]), "relative").get(prior.id), 0, "zero-only results stay on the outer boundary");
 	map.destroy();
 }

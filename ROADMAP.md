@@ -89,7 +89,7 @@ Research Connected 在 2.0 之前是 Obsidian 里的**单篇种子论文相似�
 | 3.7 数据正确性 | 过滤后预算内补页；每路 RetrievalStats（请求/命中/过滤/去重/部分失败）；log(1+被引)×新近度排序；撤稿降权与筛除开关 | ✅ 已落地并完成预览验收：状态条显示采样不足，候选诊断可查已入图、主动删除、过滤、采样后未入选；样本外只说明当前证据不足 | **1.8.2** |
 | 4 工作流 | 暂存列表（持久化、按种子分组、带来源简述） | ✅ 已完成：`saveData` + `{version:1,items}`、按种子分组、来源文案、表格/BibTeX/清单笔记导出；懒加载 S2 边证据补专门测试 | **1.8.2** |
 | 5 DOI 路径 | 独立命令 + 预算边界 | ✅ 已完成：命令面板入口、已抓取 `referenceLists` 预算 BFS、方向/检查量/耗尽提示、同长路径切换；明示「预算内」 | **1.8.2** |
-| 6 语义相似度 | 见 proposal-5：Phase A 本地 BM25+主题余弦；Phase B SPECTER2 并入 S2 批量请求；Phase C MMR + 入选解释 | ✅ A+B+C 已落地：排序 0.5 权威+0.5 本地语义、seedScore 0.55 结构+0.45 语义、详情 meter、向量通道（批次降级）、标准 MMR（λ=0.7，对称 pair sim）、selectionRank 折叠卡。差异见 proposal-5 §2A/§3/§4 | **1.8.2** |
+| 6 语义相似度 | 见 [proposal-5](docs/archive/proposals/proposal-5-semantic-similarity.md)：Phase A 本地 BM25+主题余弦；Phase B SPECTER2 并入 S2 批量请求；Phase C MMR + 入选解释 | ✅ A+B+C 已落地：排序 0.5 权威+0.5 本地语义、seedScore 0.55 结构+0.45 语义、详情 meter、向量通道（批次降级）、标准 MMR（λ=0.7，对称 pair sim）、selectionRank 折叠卡。差异见 proposal-5 §2A/§3/§4 | **1.8.2** |
 
 每阶段结束后跑阶段 0 的截图 + 性能回归。后续未开工的条目在第 11 节，不混进上表。
 
@@ -109,7 +109,7 @@ Research Connected 在 2.0 之前是 Obsidian 里的**单篇种子论文相似�
 
 ## 11. 竞品对标后续（P1 / P2）
 
-编号来自 `docs/competitive-benchmark.md`。第 4、6、7 节里的 P0 / P2 / P3 是已经做完的旧阶段名，和这里不是同一套。
+编号来自 `docs/archive/plans/competitive-benchmark.md`。第 4、6、7 节里的 P0 / P2 / P3 是已经做完的旧阶段名，和这里不是同一套。
 
 P1 按版本排。P2 先记着，有人确实要用再做。多种子已定在 2.0（2026-10-18），现有项目的存储 key 不变。
 

@@ -4,17 +4,15 @@
 
 node_modules
 
-# Built by `npm run build`. Copied into the vault after compilation.
-main.js
+# Release bundles main.js and styles.css are tracked; rebuild them from source.
 
 *.map
 data.json
 .DS_Store
 
-scripts/verify.cjs
-scripts/check-review.cjs
-scripts/perf.cjs
-scripts/mmr-sweep.cjs
 preview/preview.js
 preview/embed.js
+.cache/
+# Ignore legacy generated bundles left by older development commands.
+scripts/*.cjs
 .superdesign/tmp

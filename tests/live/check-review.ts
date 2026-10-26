@@ -3,10 +3,10 @@
  * Expects the reconcile pass to flag citation-count mismatches and to keep
  * non-research records out of the map. Not part of npm test.
  */
-import { loadNeighborhood } from "../src/neighborhood";
-import { OpenAlexClient, explainStatus, OpenAlexError, type GetJson } from "../src/openalex";
-import { SemanticScholarClient } from "../src/citation-sources";
-import { DEFAULT_SETTINGS } from "../src/settings-model";
+import { loadNeighborhood } from "../../src/neighborhood";
+import { OpenAlexClient, explainStatus, OpenAlexError, type GetJson } from "../../src/openalex";
+import { SemanticScholarClient } from "../../src/citation-sources";
+import { DEFAULT_SETTINGS } from "../../src/settings-model";
 
 const getJson: GetJson = async (url, init) => {
 	const response = await fetch(url, { headers: init.headers });

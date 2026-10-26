@@ -14,7 +14,15 @@
 		"forceConsistentCasingInFileNames": true,
 		"allowSyntheticDefaultImports": true,
 		"noEmit": true,
-		"lib": ["ES2021", "DOM"]
+		"lib": [
+			"ES2021",
+			"DOM"
+		]
 	},
-	"include": ["src/**/*.ts", "scripts/**/*.ts", "preview/**/*.ts"]
+	"include": [
+		"src/**/*.ts",
+		"tests/**/*.ts",
+		"benchmarks/**/*.ts",
+		"preview/**/*.ts"
+	]
 }

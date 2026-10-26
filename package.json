@@ -7,14 +7,18 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"verify": "node esbuild.config.mjs verify && node scripts/verify.cjs",
-		"test": "npm run lint && node scripts/verify-architecture.mjs && node scripts/verify-ui-contract.mjs && node esbuild.config.mjs verify && node scripts/verify.cjs --offline && node scripts/verify-plugin-state.mjs && node scripts/verify-feedback.mjs && node scripts/verify-discovery-graph.mjs",
-		"perf": "node esbuild.config.mjs perf && node scripts/perf.cjs",
-		"mmr-sweep": "node esbuild.config.mjs sweep && node scripts/mmr-sweep.cjs",
+		"verify": "node esbuild.config.mjs verify && node .cache/build/verify.cjs",
+		"test": "npm run lint && npm run test:unit && npm run test:browser",
+		"perf": "node esbuild.config.mjs perf && node .cache/build/perf.cjs",
+		"mmr-sweep": "node esbuild.config.mjs sweep && node .cache/build/sweep.cjs",
 		"preview": "node esbuild.config.mjs preview",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint src preview --max-warnings 0",
-		"test:browser:build": "node esbuild.config.mjs review-browser"
+		"test:browser:build": "node esbuild.config.mjs browser",
+		"test:doi-browser:build": "node esbuild.config.mjs doi-browser",
+		"test:unit": "node tests/contracts/architecture.mjs && node tests/contracts/ui-contract.mjs && node esbuild.config.mjs verify && node .cache/build/verify.cjs --offline && node tests/contracts/plugin-state.mjs && node tests/contracts/feedback.mjs && node tests/contracts/discovery-graph.mjs",
+		"test:browser": "node scripts/test-browser.mjs",
+		"test:live:review": "node esbuild.config.mjs live-review && node .cache/build/live-review.cjs"
 	},
 	"license": "MIT",
 	"devDependencies": {
@@ -23,6 +27,7 @@
 		"eslint": "^9.39.5",
 		"eslint-plugin-obsidianmd": "^0.4.2",
 		"obsidian": "1.13.1",
+		"playwright": "1.64.1",
 		"typescript": "^5.8.3"
 	},
 	"overrides": {

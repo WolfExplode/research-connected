@@ -1,6 +1,6 @@
 # Obsidian 插件反馈入口调研
 
-调研日期：2026-10-20。实施进度见 `docs/obsidian-listing-and-feedback-plan.md` 的「实施进度」。本文其余部分保持调研当时的记录。只采用维护者仓库、维护者文档及 GitHub 官方文档。检查公开网页及部分模板源码；未向任何项目提交内容，未在 Obsidian 内逐个安装验证。这里的“说明页”指 README/维护者文档，不把仓库导航中的 Issues 标签当作 README 已设计了反馈入口。
+调研日期：2026-10-20。实施进度见 `docs/archive/plans/obsidian-listing-and-feedback-plan.md` 的「实施进度」。本文其余部分保持调研当时的记录。只采用维护者仓库、维护者文档及 GitHub 官方文档。检查公开网页及部分模板源码；未向任何项目提交内容，未在 Obsidian 内逐个安装验证。这里的“说明页”指 README/维护者文档，不把仓库导航中的 Issues 标签当作 README 已设计了反馈入口。
 
 ## 结论
 

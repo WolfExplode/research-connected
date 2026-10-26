@@ -2,7 +2,7 @@
 
 - 日期：2026-10-05
 - 机器：Apple M3 Pro（arm64），Node v26.10.0
-- 数据：scripts/perf-fixture.ts 生成的确定性合成图（mulberry32，seed=42），无网络
+- 数据：benchmarks/perf-fixture.ts 生成的确定性合成图（mulberry32，seed=42），无网络
 - 方法：每项 7 轮取中位数，含 1 轮预热；`npm run perf` 复现
 
 | N | nodes | edges | select+similarity | force2d | temporal | radial | aggregates |
