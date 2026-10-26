@@ -74,7 +74,11 @@ export function nodeResearchTools(config: ResearchToolsConfig): ResearchTools {
 				}, (error, stdout, stderr) => {
 					if (error && !acceptFailure) return reject(new Error(String(stderr || stdout || error.message).trim()));
 					try { resolve(JSON.parse(String(stdout)) as CliResponse); }
-					catch { reject(new Error("Research tools returned an unreadable response. Check the Node executable in Research Connected settings.")); }
+					catch {
+						// A process that never started or crashed leaves no JSON; report why instead of blaming its output.
+						if (error) reject(new Error(String(stderr || error.message).trim()));
+						else reject(new Error("Research tools returned an unreadable response. Check the Node executable in Research Connected settings."));
+					}
 				});
 				// Always close stdin so a command that accepts piped input never waits for more.
 				child.stdin?.end(input);

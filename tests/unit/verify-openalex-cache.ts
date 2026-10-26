@@ -14,6 +14,8 @@ const GOLDEN: Array<[string, string, string]> = [
 	["https://api.openalex.org/works/doi:10.1155/2013/151675?select=id,doi&api_key=SECRET&mailto=a@b.org", "work", "b8635735e881106dd74341a76faa294a5a7593aad4c84b8d0d2ca375adefef51"],
 	["https://api.openalex.org/works?per-page=5&search=heart%20rate", "search", "c4112cb780f5a0fbf105fb480d7755746d48a321daf7698eace4ce9483e4e6e5"],
 	["https://api.openalex.org/works?filter=cites:W2031043456&per_page=25&sort=cited_by_count:desc&cursor=*", "citing", "05724fe02bf9eb8e7daa95dddce671a0095beaa5c09201e2c0ef13d37c1a92ce"],
+	// A bare % is not a valid escape; the key uses the path as sent rather than throwing.
+	["https://api.openalex.org/works/doi:10.1000/50%_OFF", "work", "ceda7ac182dc72b1516980915eaef00ec4e0269fd793270c64a880131f989f71"],
 ];
 
 function scratchRepository(): string {

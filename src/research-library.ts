@@ -245,13 +245,14 @@ export class ResearchLibrary implements PaperLibraryService {
 			const metadata = { title: paper.title, doi: paperDois(paper)[0] ?? null, openalex: openAlexId(paper.openAlexUrl || paper.id),
 				authors: paper.authorList?.filter(Boolean) ?? [], year: paper.year, abstract: paper.abstract,
 				note: local.note, files: local.files };
-			const args = ["keep", JSON.stringify(metadata)];
+			// Metadata goes on stdin: long abstracts and author lists exceed Windows' argument limit.
+			const args = ["keep", "-"];
 			if (options.download) args.push("--download");
 			if (typeof options.bookmark === "boolean") args.push(options.bookmark ? "--bookmark" : "--unbookmark");
 			if (options.onlyIfMissing) args.push("--if-missing");
 			if (options.source) args.push("--source", options.source);
 			if (options.reading) args.push("--reading-status", options.reading);
-			const response = await this.tools.json(args, { acceptFailure: true });
+			const response = await this.tools.json(args, { acceptFailure: true, input: JSON.stringify(metadata) });
 			const outcome = response.results?.[0];
 			this.index = null; this.changed();
 			const data = outcome?.data as { note?: string; held?: boolean; bookmark?: boolean; reading_status?: string; reason?: string; attemptedAt?: string } | undefined;

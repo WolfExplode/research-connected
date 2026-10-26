@@ -25,10 +25,15 @@ const CREDENTIALS = new Set(["api_key", "mailto"]);
 
 interface CacheRecord { v: number; kind: CacheKind; path: string; storedAt: number; expiresAt: number; body: unknown }
 
+// A malformed escape (a DOI with a bare %) keys on the encoded path instead of throwing.
+function decodedPath(parsed: URL): string {
+	try { return decodeURIComponent(parsed.pathname); } catch { return parsed.pathname; }
+}
+
 /** The request without credentials, with parameters sorted and OpenAlex's `per-page` spelling folded. */
 export function canonicalRequest(url: string): string {
 	const parsed = new URL(url);
-	let path = decodeURIComponent(parsed.pathname);
+	let path = decodedPath(parsed);
 	if (/^\/works\/doi:/i.test(path)) path = path.toLowerCase();
 	const params = [...parsed.searchParams]
 		.map(([name, value]): [string, string] => [name.replace(/-/g, "_"), value])
@@ -44,7 +49,7 @@ export function cacheKey(url: string): string {
 
 export function cacheKind(url: string): CacheKind {
 	const parsed = new URL(url);
-	if (/^\/works\/(?:doi:.+|[^/]+)$/i.test(decodeURIComponent(parsed.pathname))) return "work";
+	if (/^\/works\/(?:doi:.+|[^/]+)$/i.test(decodedPath(parsed))) return "work";
 	const filter = parsed.searchParams.get("filter") ?? "";
 	if ([...parsed.searchParams.keys()].some((name) => name === "search" || name.startsWith("search.")) || /(^|,)[a-z_.]*\.search:/.test(filter)) return "search";
 	if (/(^|,)cited_by:/.test(filter)) return "references";
