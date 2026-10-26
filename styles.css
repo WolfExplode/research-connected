@@ -4024,3 +4024,6 @@ button.cpo-agg-item {
 /* Global bookmark cards reuse the same paper controls without a second visual action row. */
 .cpo-library-actions > .cpo-paper-actions { display: contents; }
 .cpo-paper-library-feedback { flex-basis: 100%; }
+
+/* Label paper modal: question links and button rows. */
+.cpo-label-link, .cpo-label-actions { display: flex; align-items: center; gap: var(--size-4-2); flex-wrap: wrap; margin: var(--size-4-2) 0; }
