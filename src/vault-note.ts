@@ -10,6 +10,7 @@ let indexed: { property: string; byDoi: Map<string, IndexedNote>; byId: Map<stri
 
 export function invalidateLiteratureIndex(): void {
 	indexed = null;
+	remembered.clear();
 }
 
 /** Remember a note just written, before the metadata cache has parsed it. */
@@ -42,7 +43,7 @@ export async function openLiteratureNote(app: App, path: string): Promise<void> 
 	if (file instanceof TFile) await app.workspace.getLeaf(false).openFile(file);
 }
 
-/** Write rc-status on an existing literature note. No note means nothing to sync. */
+/** Write the library reading status on an existing literature note. No note means nothing to sync. */
 export async function syncLiteratureReading(app: App, paper: PaperNode, reading: ReadingStatus, doiProperty: string): Promise<void> {
 	const found = lookupLiteratureNote(app, paper, doiProperty);
 	if (!found) return;
@@ -50,6 +51,7 @@ export async function syncLiteratureReading(app: App, paper: PaperNode, reading:
 	const file = app.vault.getAbstractFileByPath(found.path);
 	if (!(file instanceof TFile)) return;
 	await app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
+		frontmatter.reading_status = reading;
 		frontmatter["rc-status"] = reading;
 	});
 	found.reading = reading;

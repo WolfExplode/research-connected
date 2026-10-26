@@ -1,6 +1,8 @@
 import { tr } from "./i18n";
 import type { PaperNode } from "./types";
 import type { DiscoveryPayload, DiscoveryRequest } from "./discovery-graph";
+import type { StoredTextEvidence } from "./paper-comparison";
+import type { DoiRecovery } from "./doi-recovery";
 
 declare global {
 	interface WindowEventMap {
@@ -23,6 +25,11 @@ export interface LibraryBridge {
 	read(paper: PaperNode): LibraryAvailability;
 	check(paper: PaperNode, options: { provider?: string; local?: boolean; refresh?: boolean }): Promise<LibraryAvailability>;
 	prefetch?(papers: readonly PaperNode[]): void;
+	/** Returns cached evidence; the host may schedule background downloads and notify on completion. */
+	textEvidence?(papers: readonly PaperNode[]): Promise<StoredTextEvidence[]>;
+	/** All eligible source notes, including papers without a PDF, DOI, or vector. May schedule background embedding retrieval. */
+	textLibrary?(): Promise<Array<{ paper: PaperNode; note: string; vector?: number[] }>>;
+	embeddingStatus?(): { pending: number; state: string };
 	open(note: string): void;
 	discovery?: {
 		context(): { questions: Array<{ path: string; title: string }>; papers: Array<{ path: string; title: string }> };
@@ -36,21 +43,44 @@ export function requestLibraryBridge(): LibraryBridge | null {
 	return detail.bridge?.version === 1 ? detail.bridge : null;
 }
 
-export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, bridge: LibraryBridge, openExternal: (url: string) => void): void {
+export interface DoiRecoveryAction {
+	cached: DoiRecovery | null;
+	find(): Promise<DoiRecovery>;
+	changed(): void;
+}
+
+/** A single local action shared by the identity card and graph context menu. */
+export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bridge: LibraryBridge | null | undefined, menu = false): void {
+	parent.querySelector(menu ? ".cpo-local-paper-menu" : ".cpo-local-paper")?.remove();
+	if (!bridge) return;
+	const local = bridge.read(paper).local;
+	if (local.state === "absent" || local.state === "ambiguous") return;
+	const target = local.note ?? local.files[0];
+	if (!target) return;
+	const label = tr("打开本地论文", "Open local paper");
+	const button = createEl("button", { cls: menu ? "cpo-local-paper-menu" : "cpo-local-paper", text: menu ? `📄 ${label}` : "📄" });
+	button.type = "button";
+	button.title = `${label} · ${target}`;
+	button.setAttribute("aria-label", label);
+	if (menu) button.setAttribute("role", "menuitem");
+	button.addEventListener("click", () => { bridge.open(target); if (menu) parent.hidden = true; });
+	parent.append(button);
+}
+
+export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, bridge: LibraryBridge, openExternal: (url: string) => void, recovery?: DoiRecoveryAction): void {
 	bridge.prefetch?.([paper]);
 	const card = createEl("section", { cls: "cpo-card cpo-library-availability" });
 	parent.append(card);
-	card.append(createEl("h3", { cls: "cpo-card-title", text: tr("文库与全文获取", "Library and full text") }));
-	const summary = createEl("p", { cls: "cpo-availability-local" });
+
 	const providers = createDiv({ cls: "cpo-availability-providers" });
 	const actions = createDiv({ cls: "cpo-paper-actions" });
-	card.append(summary, providers, actions);
-	const localText = { held: tr("本地已有全文", "Full text available locally"), "note-only": tr("仅有笔记，尚无本地全文", "Note exists; no local full text"), absent: tr("本地未找到匹配论文", "No matching paper found locally"), ambiguous: tr("存在多个本地匹配，请核对", "Multiple local matches; review needed") };
+	card.append(providers, actions);
+
 	const buttons: HTMLButtonElement[] = [];
 	const feedback = createEl("p", { cls: "cpo-availability-feedback", attr: { role: "status", "aria-live": "polite" } });
 	const paint = (data: LibraryAvailability): void => {
-		summary.textContent = localText[data.local.state];
-		if (data.local.matchedBy) summary.append(createEl("small", { cls: "cpo-availability-meta", text: tr(`匹配依据：${data.local.matchedBy}`, `Matched by ${data.local.matchedBy}`) }));
+		const identity = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity");
+		if (identity) paintLocalPaperAction(identity, paper, bridge);
 		providers.replaceChildren();
 		buttons.length = 0;
 		for (const [name, label] of [["oa", tr("开放获取", "Open access")], ["scihub", "Sci-Hub"]]) {
@@ -77,11 +107,17 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 					const url = new URL(location.url);
 					if (["https:", "http:"].includes(url.protocol) && !url.username && !url.password && !seen.has(url.href)) {
 						seen.add(url.href);
-						const link = createEl("button", { text: location.kind === "pdf" ? tr("打开 PDF", "Open PDF") : name === "oa" ? tr("打开来源页面", "Open source page") : tr("打开 Sci-Hub 链接", "Open Sci-Hub link") });
-						link.type = "button";
-						link.title = url.hostname;
-						link.setAttribute("aria-label", `${link.textContent} · ${url.hostname}`);
-						link.addEventListener("click", () => openExternal(url.href));
+						const link = createEl("a", { cls: "cpo-availability-link", text: url.href });
+						link.href = url.href;
+						link.target = "_blank";
+						link.rel = "noopener noreferrer";
+						link.title = url.href;
+						link.addEventListener("click", event => {
+							// Keep modified clicks and the context menu available as normal link actions.
+							if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+							event.preventDefault();
+							openExternal(url.href);
+						});
 						linkActions.append(link);
 					}
 				} catch { /* Invalid provider link is never opened. */ }
@@ -117,15 +153,8 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 	};
 	const initial = bridge.read(paper);
 	paint(initial);
-	for (const file of initial.local.files) {
-		const open = createEl("button", { text: initial.local.files.length === 1 ? tr("打开本地全文", "Open local full text") : file.split("/").pop() });
-		open.type = "button"; open.title = file;
-		open.addEventListener("click", () => bridge.open(file)); actions.append(open);
-	}
 	if (initial.local.note) {
 		const note = initial.local.note;
-		const open = createEl("button", { text: tr("打开文库笔记", "Open library note") });
-		open.type = "button"; open.addEventListener("click", () => bridge.open(note)); actions.append(open);
 		if (bridge.discovery && note.startsWith("Research/Papers/")) {
 			const related = createEl("button", { text: tr("查找本地相关论文", "Find related local papers") });
 			related.type = "button";
@@ -134,5 +163,28 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 		}
 	}
 	card.append(feedback);
-	if (!initial.doi) feedback.textContent = tr("此论文没有 DOI，无法查询在线来源。", "Add a DOI to check online sources.");
+	const recoveryText = (result: DoiRecovery): string => result.state === "found"
+		? tr(`DOI 已由 ${result.candidates[0]!.source} 验证：${result.candidates[0]!.doi}`, `DOI verified through ${result.candidates[0]!.source}: ${result.candidates[0]!.doi}`)
+		: result.state === "ambiguous" ? tr("找到多个匹配 DOI，请核对来源。未自动添加。", "Multiple matching DOIs; review the sources. No DOI was assigned.")
+			: tr("未找到可验证的 DOI。可补充作者、年份或期刊信息后重试。", "No verified DOI found. Add author, year, or journal details and try again.");
+	if (recovery?.cached) {
+		feedback.textContent = recoveryText(recovery.cached);
+		if (recovery.cached.state === "ambiguous") for (const candidate of recovery.cached.candidates) {
+			const link = createEl("button", { text: `${candidate.source}: ${candidate.doi}` });
+			link.type = "button"; link.addEventListener("click", () => openExternal(`https://doi.org/${candidate.doi}`)); actions.append(link);
+		}
+	}
+	if (!initial.doi) {
+		if (!recovery?.cached) feedback.textContent = tr("查找 DOI 后即可查询在线来源。", "Find a DOI to check online sources.");
+		if (recovery) {
+			const find = createEl("button", { text: recovery.cached ? tr("重试查找 DOI", "Retry DOI search") : tr("查找 DOI", "Find DOI") });
+			find.type = "button"; actions.prepend(find);
+			find.addEventListener("click", () => {
+				find.disabled = true; feedback.textContent = tr("正在查找并核对 DOI…", "Searching and verifying DOI…");
+				void recovery.find().then(() => { if (card.isConnected) recovery.changed(); }).catch(() => {
+					if (card.isConnected) { feedback.textContent = tr("DOI 查询或保存失败，请重试。", "DOI lookup or save failed. Try again."); find.disabled = false; }
+				});
+			});
+		}
+	}
 }

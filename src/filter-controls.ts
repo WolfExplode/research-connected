@@ -80,12 +80,26 @@ export function mountGraphKey(
 	paintColor: (mode: LayoutMode) => void;
 	setStats: (nodes: readonly { id: string; year: number | null; isSeed?: boolean }[], edges: readonly GraphEdge[]) => void;
 	setKinds: (selected: GraphFilter["kinds"]) => void;
+	setVisibleConnections: (edges: readonly GraphEdge[] | null) => void;
 } {
 	const key = createDiv();
 	key.className = "cpo-graph-key";
 	const kinds = createDiv();
 	kinds.className = "cpo-graph-key-kinds";
 	const kindCounts = buildLegend(kinds, read, write);
+	let visibleConnections: readonly GraphEdge[] | null = null;
+	let graphEdges: readonly GraphEdge[] = [];
+	const paintConnectionCounts = (): void => {
+		const counts = { direct: 0, cocitation: 0, coupling: 0 };
+		for (const edge of visibleConnections ?? graphEdges) {
+			const kind = relationKind(edge);
+			if (kind === "direct" || kind === "cocitation" || kind === "coupling") counts[kind]++;
+		}
+		for (const kind of KIND_ORDER) {
+			const el = kindCounts.get(kind), text = String(counts[kind]);
+			if (el && el.textContent !== text) el.textContent = text;
+		}
+	};
 	const marks = createDiv();
 	marks.className = "cpo-graph-key-marks";
 	const seed = markRow("cpo-graph-key-seed", tr("种子文献", "Seed paper"), Boolean(onSeedSelect));
@@ -123,10 +137,8 @@ export function mountGraphKey(
 		edges: readonly GraphEdge[],
 	): void => {
 		const stats = graphKeyStats(nodes, edges);
-		for (const kind of KIND_ORDER) {
-			const el = kindCounts.get(kind);
-			if (el) el.textContent = String(stats.kinds[kind]);
-		}
+		graphEdges = edges;
+		paintConnectionCounts();
 		seed.n.textContent = String(stats.seeds);
 		if (seed.row.instanceOf(HTMLButtonElement)) seed.row.disabled = stats.seeds === 0;
 		classic.n.textContent = String(stats.classics);
@@ -140,5 +152,8 @@ export function mountGraphKey(
 			button.setAttribute("aria-pressed", String(selected[kind]));
 		}
 	};
-	return { paintColor, setStats, setKinds };
+	return { paintColor, setStats, setKinds, setVisibleConnections: edges => {
+		visibleConnections = edges;
+		paintConnectionCounts();
+	} };
 }

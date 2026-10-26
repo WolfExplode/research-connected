@@ -43,6 +43,7 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 		this.destroyView = mountEmbed(this.containerEl, {
 			source: this.source,
 			getSettings: () => plugin.getSettings(),
+			persistSettings: () => plugin.saveSettings(false),
 			getJson: obsidianGetJson,
 			postJson: obsidianPostJson,
 			openExternal,

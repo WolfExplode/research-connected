@@ -8,6 +8,7 @@ import {
 import { classifyQuery, normalizeDoi, reconstructAbstract, referenceIds, shortId, toPaper, nonResearchLabel } from "./paper";
 import { buildSimilarity } from "./similarity";
 import { buildSemanticScorer } from "./text-similarity";
+import { compareText, type TextComparison } from "./paper-comparison";
 import { buildPairSimilarity } from "./diversity";
 import { CitationEvidenceStore, directEvidence } from "./citation-evidence";
 import { doiFromPaper, type S2Counts } from "./citation-sources";
@@ -54,6 +55,9 @@ export function endDeepDive(seedId: string): void { expandingSeeds.delete(seedId
 const MAX_CONTEXT_CITERS = 400;
 
 export interface SimilarityGraph {
+	/** Session-only vectors; source sidecars own persistence. */
+	textVectors?: ReadonlyMap<string, readonly number[]>;
+	textComparisons?: ReadonlyMap<string, TextComparison>;
 	workIdentity?: WorkIdentity;
 	nodes: PaperNode[];
 	edges: GraphEdge[];
@@ -269,7 +273,7 @@ export async function loadNeighborhood(
 		return paper.retracted ? relevance * 0.1 : relevance;
 	};
 	// MMR 多样性（Phase C）：候选两两相似度用对称的词项/主题余弦，不请求向量。
-	const mmr: MmrOptions = { sim: buildPairSimilarity(rankPool), lambda: MMR_LAMBDA };
+	const mmr: MmrOptions | undefined = settings.diversifyResults === false ? undefined : { sim: buildPairSimilarity(rankPool), lambda: MMR_LAMBDA };
 	const picked = selectNeighbors(
 		settings,
 		{
@@ -512,6 +516,10 @@ export async function loadNeighborhood(
 		candidateAudit,
 		crossCheck: crossCheck.size > 0 ? crossCheck : undefined,
 		semanticScores,
+		textVectors: reconcile?.embeddingModel === "specter_v2" ? embeddings : undefined,
+		textComparisons: new Map(picked.map(paper => [paper.id, compareText(seed, paper,
+			reconcile?.embeddingModel === "specter_v2" ? embeddings.get(seed.id) : undefined,
+			reconcile?.embeddingModel === "specter_v2" ? embeddings.get(paper.id) : undefined)])),
 		semanticMode,
 		semanticModel: semanticMode === "embedding" ? reconcile?.embeddingModel ?? null : undefined,
 		selectionRank,
@@ -662,12 +670,13 @@ export function selectNeighbors(
 	settings: Pick<
 		ConnectedPapersSettings,
 		"maxNodes" | "includeReferences" | "includeCitations" | "includeRelated"
-	>,
+	> & Pick<ConnectedPapersSettings, "diversifyResults">,
 	groups: { reference: PaperNode[]; citation: PaperNode[]; related: PaperNode[] },
 	seedId: string,
 	rank?: (paper: PaperNode) => number,
-	mmr?: MmrOptions,
+	suppliedMmr?: MmrOptions,
 ): PaperNode[] {
+	const mmr = settings.diversifyResults === false ? undefined : suppliedMmr;
 	const maxNodes = clampInt(settings.maxNodes, 20, 300);
 	const slots = maxNodes - 1;
 	const relevanceOf = rank ?? impactScore;

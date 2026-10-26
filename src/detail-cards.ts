@@ -1,4 +1,16 @@
 import { tr } from "./i18n";
+import { ReadingSaveError } from "./workflow/reading-state";
+import { textMethodLabel, type SimilarityKind, type TextComparison } from "./paper-comparison";
+
+export function paintComparisonCard(parent: HTMLElement, kind: SimilarityKind, value: number | undefined, comparison?: TextComparison): void {
+	const card = el(parent, "section", "cpo-card cpo-comparison-card");
+	const hint = kind === "text" ? textMethodLabel(comparison?.method ?? "unavailable")
+		: tr("55% 共享参考文献 + 35% 共被引 + 10% 直接引用", "55% shared references + 35% co-citation + 10% direct citation");
+	paintMeter(card, kind === "text" ? tr("文本相似度", "Text similarity") : tr("引用相似度", "Citation similarity"), value ?? null, hint);
+	if (comparison && kind === "text") {
+		el(card, "p", "cpo-fact-note", `SPECTER2: ${comparison.embedding?.toFixed(2) ?? tr("不可用", "Unavailable")} · ${tr("词语重合度", "Word overlap")}: ${comparison.lexical?.toFixed(2) ?? tr("不可用", "Unavailable")}`);
+	}
+}
 import { edgeCitationPairs, evidenceLabel, SOURCE_TEXT, type CitationEvidence, type CrossCheckLike } from "./citation-evidence";
 import type { RankedWork } from "./aggregates";
 import { relationFacts } from "./graph-filter";
@@ -86,17 +98,41 @@ export function paintPaperWorkflowState(
 	}
 	readingSelect.value = currentReading;
 	readingSelect.title = tr("阅读状态", "Reading status");
+	const feedback = el(card, "p", "cpo-paper-action-error");
+	feedback.setAttribute("role", "status");
+	feedback.hidden = true;
+	const retry = el(card, "button", "cpo-text-btn", tr("重试笔记同步", "Retry note sync"));
+	retry.type = "button"; retry.hidden = true;
+	retry.onclick = async () => {
+		retry.disabled = readingSelect.disabled = true;
+		try {
+			await onReading(currentReading, currentReading);
+			feedback.hidden = retry.hidden = true;
+			readingSelect.title = tr("阅读状态", "Reading status");
+		} catch (error) {
+			if (error instanceof ReadingSaveError) currentReading = error.reading;
+			readingSelect.value = currentReading;
+			feedback.textContent = error instanceof Error ? error.message : tr("笔记同步失败，请重试", "Note sync failed. Try again.");
+		} finally { retry.disabled = readingSelect.disabled = false; }
+	};
 	readingSelect.onchange = async () => {
 		const next = readingSelect.value as ReadingStatus;
 		if (next === currentReading) return;
 		const previous = currentReading;
 		readingSelect.disabled = true;
+		feedback.hidden = true;
+		retry.hidden = true;
 		try {
 			await onReading(next, previous);
 			currentReading = next;
-		} catch {
+			readingSelect.title = tr("阅读状态", "Reading status");
+		} catch (error) {
+			if (error instanceof ReadingSaveError) currentReading = error.reading;
+			retry.hidden = !(error instanceof ReadingSaveError && error.retrySync);
 			readingSelect.value = currentReading;
-			readingSelect.title = tr("保存失败，请重试", "Could not save. Try again.");
+			feedback.textContent = error instanceof Error ? error.message : tr("保存失败，请重试", "Could not save. Try again.");
+			feedback.hidden = false;
+			readingSelect.title = feedback.textContent;
 		} finally {
 			readingSelect.disabled = false;
 		}
@@ -248,12 +284,12 @@ export function paintRelationSection(parent: HTMLElement, edge: GraphEdge, a: Pa
 	const card = el(parent, "section", "cpo-card");
 	const info = relationFacts(edge, a, b, options.sources);
 	el(card, "p", "cpo-fact-lead", info.lead);
-	if (options.seedScore !== undefined) paintMeter(card, tr("图谱综合相似度", "Overall graph similarity"), options.seedScore, tr("结构 + 语义信号", "Structure and semantic signals"));
+	if (options.seedScore !== undefined) paintMeter(card, tr("图谱候选选择分", "Graph selection score"), options.seedScore, tr("用于候选选择的结构和文本/主题信号", "Structure and text/topic signals used for candidate selection"));
 	if (edge.structuralSimilarity !== undefined) {
 		paintMeter(card, tr("文献结构相似度", "Structural similarity"), edge.structuralSimilarity, tr("共享参考文献 / 共被引", "Shared references / co-citations"), true);
 	}
 	if (options.semanticScore !== undefined) {
-		paintMeter(card, tr("文本相似度", "Text similarity"), options.semanticScore, options.semanticHint ?? tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally"), true);
+		paintMeter(card, tr("文本/主题信号", "Text/topic signal"), options.semanticScore, options.semanticHint ?? tr("标题 / 摘要 / 主题，本地计算", "Title, abstract, and topics; computed locally"), true);
 	}
 	const grid = el(card, "div", "cpo-stat-grid");
 	paintStat(grid, tr("共享参考文献", "Shared references"), tr(`${edge.sharedRefs} 篇`, `${edge.sharedRefs} papers`));

@@ -13,3 +13,14 @@ export function allowedExternalUrl(url: string): string | null {
 	if (ALLOWED_HOSTS.has(host)) return parsed.toString();
 	return null;
 }
+
+/** Provider links may point to any publisher, repository, or configured mirror. */
+export function providerExternalUrl(url: string): string | null {
+	try {
+		const parsed = new URL(url);
+		if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password) return null;
+		return parsed.toString();
+	} catch {
+		return null;
+	}
+}

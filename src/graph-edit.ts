@@ -13,6 +13,8 @@ export const GRAFT_IDS_CAP = 80;
 
 /** The fields omit/graft/refresh touch. SimilarityGraph is a structural match. */
 export interface EditableGraph {
+	textVectors?: ReadonlyMap<string, readonly number[]>;
+	textComparisons?: ReadonlyMap<string, import("./paper-comparison").TextComparison>;
 	nodes: PaperNode[];
 	edges: GraphEdge[];
 	seedScore: Map<string, number>;
@@ -181,6 +183,8 @@ function canonicalizeWorkGraph<T extends EditableGraph>(graph: T): T {
 		coCitationContextIds: [...new Set([...sourceContexts].map(resolve))],
 		excludedIds: graph.excludedIds ? [...new Set(graph.excludedIds.map(resolve))].filter((id) => !nodes.some((paper) => paper.id === id && paper.isSeed)) : undefined,
 		semanticScores: graph.semanticScores ? new Map([...graph.semanticScores].filter(([id]) => !changedIds.has(id) && resolve(id) === id)) : undefined,
+		textComparisons: graph.textComparisons ? new Map([...graph.textComparisons].filter(([id, value]) => !changedIds.has(id) && !changedIds.has(value.seedId) && resolve(id) === id)) : undefined,
+		textVectors: graph.textVectors ? new Map([...graph.textVectors].filter(([id]) => !changedIds.has(id) && resolve(id) === id)) : undefined,
 		workIdentity: { version: 1, records: index.records, referenceLists: [...sources], evidence: rawEvidence.entries(), directEdges: [...directEdges.values()], canonicalIds: [...index.ids], separatedIds: previous?.separatedIds ?? [], contextIds: [...sourceContexts] },
 	};
 }

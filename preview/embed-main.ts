@@ -1,6 +1,6 @@
 import { mountEmbed } from "../src/embed-mount";
 import { explainStatus, OpenAlexError, type GetJson } from "../src/openalex";
-import { allowedExternalUrl } from "../src/safe-url";
+import { openExternal } from "../src/open-external";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { nicholsSnapshot, workIdentityFixtureGet } from "./work-identity-fixture";
 import { normalizeProjects } from "../src/project-state";
@@ -35,8 +35,5 @@ mountEmbed(root, {
 	source: lines.join("\n"),
 	getSettings: () => settings,
 	getJson: identity ? workIdentityFixtureGet : offline ? fixtureGet : getJson,
-	openExternal: (url) => {
-		const safe = allowedExternalUrl(url);
-		if (safe) window.open(safe, "_blank", "noopener,noreferrer");
-	},
+	openExternal,
 });

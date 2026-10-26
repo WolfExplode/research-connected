@@ -148,7 +148,7 @@ export class SemanticScholarClient {
 		if (!this.postJson || dois.length === 0) return new Map();
 		const base = "https://api.semanticscholar.org/graph/v1/paper/batch";
 		const fields = opts?.embedding
-			? "citationCount,referenceCount,externalIds,embedding"
+			? "citationCount,referenceCount,externalIds,embedding.specter_v2"
 			: "citationCount,referenceCount,externalIds";
 		const out = new Map<string, S2Counts>();
 		this.embeddingModel = null;
@@ -162,14 +162,14 @@ export class SemanticScholarClient {
 				const url = new URL(base);
 				url.searchParams.set("fields", fieldSet);
 				try {
-					json = await this.postJson!(url.toString(), {
+					json = await queuedRequest(url.toString(), () => this.postJson!(url.toString(), {
 						headers: {
 							Accept: "application/json",
 							"Content-Type": "application/json",
 							...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
 						},
 						body,
-					});
+					}));
 					if (Array.isArray(json)) return true;
 					lastError = s2FormatError(tr("批量接口", "bulk API"), json);
 				} catch (error) {
@@ -193,7 +193,9 @@ export class SemanticScholarClient {
 			} | null>) {
 				const doi = item?.externalIds?.DOI?.toLowerCase();
 				if (!item || !doi) continue;
-				const vector = Array.isArray(item.embedding?.vector) ? item.embedding.vector : null;
+				const candidate = item.embedding?.vector;
+				const vector = item.embedding?.model === "specter_v2" && Array.isArray(candidate) && candidate.length === 768
+					&& candidate.every(Number.isFinite) && candidate.some(value => value !== 0) ? candidate : null;
 				if (vector && item.embedding?.model && !this.embeddingModel) this.embeddingModel = item.embedding.model;
 				out.set(doi, {
 					citationCount: typeof item.citationCount === "number" ? item.citationCount : null,
@@ -330,17 +332,24 @@ function pids(value: string | undefined): string[] {
 
 const queues = new Map<string, Promise<unknown>>();
 const responses = new Map<string, { at: number; result: Promise<unknown> }>();
-async function cachedGet(get: GetJson, url: string, init: { headers: Record<string, string> }): Promise<unknown> {
+
+/** All clients and HTTP methods share a host queue, including retries and fallbacks. */
+function queuedRequest(url: string, request: () => Promise<unknown>): Promise<unknown> {
 	const origin = new URL(url).origin;
+	const previous = queues.get(origin) ?? Promise.resolve();
+	const result = previous.catch(() => {}).then(async () => {
+		await pause(new URL(url).hostname === "api.semanticscholar.org" ? 1100 : 400);
+		return request();
+	});
+	queues.set(origin, result);
+	return result;
+}
+
+async function cachedGet(get: GetJson, url: string, init: { headers: Record<string, string> }): Promise<unknown> {
 	const key = url + JSON.stringify(init.headers);
 	const cached = responses.get(key);
 	if (cached && Date.now() - cached.at < 300_000) return cached.result;
-	const previous = queues.get(origin) ?? Promise.resolve();
-	const result = previous.catch(() => {}).then(async () => {
-		await new Promise(resolve => window.setTimeout(resolve, origin.includes("semanticscholar") ? 1100 : 400));
-		return get(url, init);
-	});
-	queues.set(origin, result);
+	const result = queuedRequest(url, () => get(url, init));
 	if (responses.size >= 200) responses.delete(responses.keys().next().value!);
 	responses.set(key, { at: Date.now(), result });
 	try { return await result; } catch (error) { responses.delete(key); throw error; }

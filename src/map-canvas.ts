@@ -1,9 +1,10 @@
 import { tr } from "./i18n";
+import { visibleConnections } from "./connection-visibility";
 import { classicInfluence } from "./aggregates";
 import { communityColor, detectCommunities } from "./communities";
 import { focusNodes } from "./graph-filter";
 import { authorYear, citationLabelAlpha } from "./labels";
-import { orbitPosition, placeLayout, similarityRadius, type ColorMode, type LayoutMode } from "./layout-modes";
+import { orbitPosition, placeLayout, radialDistanceScores, similarityRadius, type ColorMode, type DistanceScale, type LayoutMode } from "./layout-modes";
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
@@ -34,7 +35,25 @@ export class SimilarityMap {
 
 	refreshLibraryStatus(): void { this.draw(); }
 	onSelect: ((paper: PaperNode | null) => void) | null = null;
+	onDraw: (() => void) | null = null;
+	/** Canvas-local CSS coordinates for a visible node and its rendered radius. */
+	nodeAnchor(id: string): { x: number; y: number; radius: number } | null {
+		const node = this.nodes.find(item => item.id === id);
+		if (!node || !this.isShown(node)) return null;
+		return { x: node.x * this.k + this.tx, y: node.y * this.k + this.ty, radius: node.radius * this.k };
+	}
+
 	onEdgeSelect: ((edge: GraphEdge) => void) | null = null;
+	onVisibleConnections: ((edges: readonly GraphEdge[] | null) => void) | null = null;
+	private showAllCitationConnections = false;
+	setShowAllCitationConnections(show: boolean): void {
+		this.showAllCitationConnections = show;
+		this.draw();
+	}
+	private visibleConnections(): GraphEdge[] {
+		return visibleConnections(this.edges, new Set(this.nodes.filter(node => node.shown).map(node => node.id)),
+			this.kindVisible, this.layoutMode, this.similarityKind, this.showAllCitationConnections, this.hoverId ?? this.selectedId);
+	}
 	onNodeMenu: ((paper: PaperNode | null, x: number, y: number) => void) | null = null;
 	onDeleteRequest: (() => void) | null = null;
 
@@ -70,6 +89,15 @@ export class SimilarityMap {
 	private colorMode: ColorMode = "community";
 	private scrubYear: number | null = null;
 	private seedScore = new Map<string, number>();
+	private distanceScores = new Map<string, number>();
+	private distanceScale: DistanceScale = "absolute";
+	/** Orbital angles survive a temporary move to the missing-evidence grid. */
+	private orbitAngles = new Map<string, number>();
+	setDistanceScale(scale: DistanceScale): void {
+		if (this.distanceScale === scale) return;
+		this.distanceScale = scale;
+		if (this.layoutMode === "radial") this.adoptGraph(this.nodes, this.edges, this.seedScore);
+	}
 	private communities = new Map<string, number>();
 	private classicGlow = new Map<string, number>();
 	private minYear = 0;
@@ -82,22 +110,41 @@ export class SimilarityMap {
 	private zoomFrame: number | null = null;
 	private pulseFrame: number | null = null;
 	private wheelNeedsModifier = false;
+	private readonly animationDocument: Document | undefined;
+	private readonly motionQuery: MediaQueryList | null;
+	private animationsAllowed(): boolean {
+		return this.alive && !this.animationDocument?.hidden && !this.motionQuery?.matches;
+	}
+	private onAnimationPolicy = (): void => {
+		if (this.animationsAllowed()) { this.ensurePulse(); return; }
+		for (const frame of [this.simFrame, this.zoomFrame, this.pulseFrame]) if (frame !== null) this.caf(frame);
+		this.simFrame = this.zoomFrame = this.pulseFrame = null;
+		this.simAlpha = 0;
+		if (this.zoomAnim) {
+			this.k = this.zoomAnim.k; this.tx = this.zoomAnim.tx; this.ty = this.zoomAnim.ty;
+			this.zoomAnim = null;
+		}
+		this.draw();
+	};
 
 	private setCursor(cursor: "grab" | "grabbing" | "pointer"): void {
 		this.canvas.classList.toggle("is-pointer", cursor === "pointer");
 		this.canvas.classList.toggle("is-grabbing", cursor === "grabbing");
 	}
 
-	getViewState(): { zoom: number; centerX: number; centerY: number; selectedId: string | null } {
+	getViewState(): { zoom: number; centerX: number; centerY: number; selectedId: string | null; similarityKind: "text" | "citations"; distanceScale: DistanceScale } {
 		return {
 			zoom: this.k,
 			centerX: (this.cssWidth / 2 - this.tx) / this.k,
 			centerY: (this.cssHeight / 2 - this.ty) / this.k,
 			selectedId: this.selectedId,
+			similarityKind: this.similarityKind,
+			distanceScale: this.distanceScale,
 		};
 	}
 
-	setViewState(state: { zoom: number; centerX: number; centerY: number; selectedId: string | null }): void {
+	setViewState(state: { zoom: number; centerX: number; centerY: number; selectedId: string | null; distanceScale?: DistanceScale }): void {
+		if (state.distanceScale) this.setDistanceScale(state.distanceScale);
 		this.k = clamp(state.zoom, 0.025, 4);
 		this.tx = this.cssWidth / 2 - state.centerX * this.k;
 		this.ty = this.cssHeight / 2 - state.centerY * this.k;
@@ -124,6 +171,10 @@ export class SimilarityMap {
 		private readonly stage: HTMLElement,
 		options?: { wheel?: "always" | "modifier" },
 	) {
+		this.animationDocument = canvas.ownerDocument ?? (typeof document === "undefined" ? undefined : document);
+		this.motionQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+		this.animationDocument?.addEventListener("visibilitychange", this.onAnimationPolicy);
+		this.motionQuery?.addEventListener("change", this.onAnimationPolicy);
 		this.wheelNeedsModifier = options?.wheel === "modifier";
 		canvas.tabIndex = 0;
 		// Optional-call: the headless verify script stubs a bare canvas object.
@@ -142,6 +193,7 @@ export class SimilarityMap {
 	}
 
 	setGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>): void {
+		this.orbitAngles.clear();
 		this.simAlpha = 0;
 		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		this.minYear = years.length ? Math.min(...years) : 0;
@@ -156,8 +208,20 @@ export class SimilarityMap {
 		this.rebuild(nodes, true);
 	}
 
+	/** Change the comparison metric without moving the viewport or losing orbital angles. */
+	setComparisonScores(scores: Map<string, number>, kind: "text" | "citations"): void {
+		this.similarityKind = kind;
+		this.comparisonLabel = kind === "text" ? tr("文本相似度", "Text similarity") : tr("引用相似度", "Citation similarity");
+		this.seedScore = scores;
+		if (this.layoutMode === "radial") this.adoptGraph(this.nodes, this.edges, scores);
+		else this.draw();
+	}
+	private comparisonLabel = tr("相似度", "Similarity");
+	private similarityKind: "text" | "citations" = "text";
+
 	/** Keep existing coordinates by default; reflow and fit after removals/restores when requested. */
 	adoptGraph(nodes: PaperNode[], edges: GraphEdge[], seedScore: Map<string, number>, nearId?: string, reflow = false): void {
+		this.distanceScores = radialDistanceScores(nodes, seedScore, this.distanceScale);
 		const prev = new Map(this.nodes.map((node) => [node.id, node]));
 		const years = nodes.map((node) => node.year).filter((year): year is number => year !== null);
 		this.minYear = years.length ? Math.min(...years) : 0;
@@ -168,8 +232,8 @@ export class SimilarityMap {
 		this.classicGlow = classicInfluence(nodes, edges);
 		this.ensurePulse();
 		const host = nearId ? prev.get(nearId) : null;
-		const placed = reflow || !host || this.layoutMode === "radial"
-			? new Map(placeLayout(this.layoutMode, nodes, edges, seedScore).map((node) => [node.id, node]))
+		const placed = reflow || this.layoutMode === "radial" || (!host && nodes.some(node => !prev.has(node.id)))
+			? new Map(placeLayout(this.layoutMode, nodes, edges, this.layoutMode === "radial" ? this.distanceScores : seedScore).map((node) => [node.id, node]))
 			: null;
 		const norms = nodes.map((node) => yearNormalizedCitations(node.citedByCount, node.year));
 		const minCited = Math.min(...norms);
@@ -181,8 +245,11 @@ export class SimilarityMap {
 			let x = reflow ? at?.x ?? 0 : old?.x ?? parked?.x ?? at?.x ?? 0;
 			let y = reflow ? at?.y ?? 0 : old?.y ?? parked?.y ?? at?.y ?? 0;
 			if (this.layoutMode === "radial") {
-				const radius = similarityRadius(seedScore.get(node.id));
-				const point = node.isSeed ? { x: 0, y: 0 } : radius === null ? at ?? { x: 360, y: 0 } : orbitPosition(radius, x, y, { x, y });
+				const radius = similarityRadius(this.distanceScores.get(node.id));
+				const angle = this.orbitAngles.get(node.id) ?? Math.atan2(at?.y ?? y, at?.x ?? x);
+				const point = node.isSeed ? { x: 0, y: 0 } : radius === null ? at ?? { x: 360, y: 0 }
+					: { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+				if (!node.isSeed && radius !== null) this.orbitAngles.set(node.id, angle);
 				x = point.x; y = point.y;
 			}
 			return {
@@ -233,6 +300,7 @@ export class SimilarityMap {
 	}
 
 	setLayout(mode: LayoutMode): void {
+		if (this.layoutMode === mode) return;
 		if (this.simFrame !== null) this.caf(this.simFrame);
 		this.simFrame = null;
 		this.simAlpha = 0;
@@ -280,7 +348,7 @@ export class SimilarityMap {
 
 	private refreshFocus(): void {
 		const id = this.hoverId ?? this.selectedId;
-		if (this.layoutMode === "radial") {
+		if (this.layoutMode === "radial" && this.similarityKind === "text") {
 			const seed = this.nodes.find(node => node.isSeed);
 			this.focus = id && id !== seed?.id ? new Set([id, ...(seed ? [seed.id] : [])]) : null;
 			return;
@@ -360,11 +428,11 @@ export class SimilarityMap {
 	}
 
 	private reheat(alpha: number): void {
-		if (!this.physicsOn() || this.nodes.length > 350) return;
+		if (!this.animationsAllowed() || !this.physicsOn() || this.nodes.length > 350) return;
 		this.simAlpha = Math.max(this.simAlpha, alpha);
 		if (this.simFrame !== null) return;
 		const step = (): void => {
-			if (!this.alive || this.simAlpha < 0.02) {
+			if (!this.animationsAllowed() || this.simAlpha < 0.02) {
 				this.simFrame = null;
 				this.simAlpha = 0;
 				this.captureStructure();
@@ -379,14 +447,15 @@ export class SimilarityMap {
 	}
 
 	private captureStructure(): void {
+		const byId = new Map(this.nodes.map(node => [node.id, node]));
 		for (const node of this.nodes) {
 			node.homeX = node.x;
 			node.homeY = node.y;
 		}
 		this.edgeRest.clear();
 		for (const edge of this.edges) {
-			const a = this.nodes.find((node) => node.id === edge.source);
-			const b = this.nodes.find((node) => node.id === edge.target);
+			const a = byId.get(edge.source);
+			const b = byId.get(edge.target);
 			if (!a || !b) continue;
 			this.edgeRest.set(pairKey(a.id, b.id), Math.max(8, Math.hypot(b.x - a.x, b.y - a.y)));
 		}
@@ -495,9 +564,9 @@ export class SimilarityMap {
 	}
 
 	private ensurePulse(): void {
-		if (this.pulseFrame !== null || this.classicGlow.size === 0) return;
+		if (!this.animationsAllowed() || this.pulseFrame !== null || this.classicGlow.size === 0) return;
 		const step = (): void => {
-			if (!this.alive || this.classicGlow.size === 0) {
+			if (!this.animationsAllowed() || this.classicGlow.size === 0) {
 				this.pulseFrame = null;
 				return;
 			}
@@ -509,6 +578,8 @@ export class SimilarityMap {
 
 	destroy(): void {
 		this.alive = false;
+		this.animationDocument?.removeEventListener("visibilitychange", this.onAnimationPolicy);
+		this.motionQuery?.removeEventListener("change", this.onAnimationPolicy);
 		if (this.simFrame !== null) this.caf(this.simFrame);
 		if (this.zoomFrame !== null) this.caf(this.zoomFrame);
 		if (this.pulseFrame !== null) this.caf(this.pulseFrame);
@@ -535,10 +606,11 @@ export class SimilarityMap {
 		// Ease toward the target like the Obsidian graph; rapid wheel ticks just
 		// move the target, and one rAF loop converges on it.
 		this.zoomAnim = { k: next, tx: sx - world.x * next, ty: sy - world.y * next };
+		if (!this.animationsAllowed()) { this.onAnimationPolicy(); return; }
 		if (this.zoomFrame !== null) return;
 		const step = (): void => {
 			const target = this.zoomAnim;
-			if (!this.alive || !target) {
+			if (!this.animationsAllowed() || !target) {
 				this.zoomFrame = null;
 				return;
 			}
@@ -605,7 +677,7 @@ export class SimilarityMap {
 		this.moved = false;
 		this.downX = event.clientX;
 		this.downY = event.clientY;
-		if (hit && !hit.isSeed && (this.layoutMode !== "radial" || similarityRadius(this.seedScore.get(hit.id)) !== null)) {
+		if (hit && !hit.isSeed && (this.layoutMode !== "radial" || similarityRadius(this.distanceScores.get(hit.id)) !== null)) {
 			const world = this.screenToWorld(local.x, local.y);
 			this.dragging = { kind: "node", id: hit.id, dx: hit.x - world.x, dy: hit.y - world.y };
 		} else {
@@ -683,8 +755,9 @@ export class SimilarityMap {
 			if (node) {
 				const world = this.screenToWorld(local.x, local.y);
 				const x = world.x + dragging.dx, y = world.y + dragging.dy;
-				const radius = this.layoutMode === "radial" ? similarityRadius(this.seedScore.get(node.id)) : null;
+				const radius = this.layoutMode === "radial" ? similarityRadius(this.distanceScores.get(node.id)) : null;
 				const point = radius === null ? { x, y } : orbitPosition(radius, x, y, node);
+				if (radius !== null) this.orbitAngles.set(node.id, Math.atan2(point.y, point.x));
 				node.x = point.x;
 				node.y = point.y;
 				this.reheat(0.55);
@@ -737,8 +810,7 @@ export class SimilarityMap {
 			}
 			const p = this.screenToWorld(local.x, local.y);
 			let closest: GraphEdge | null = null, distance = 7 / this.k;
-			for (const edge of this.edges) {
-				if (this.layoutMode === "radial") break;
+			for (const edge of this.visibleConnections()) {
 				if (!this.kindVisible[relationKind(edge)]) continue;
 				const a = this.nodes.find(n => n.id === edge.source), b = this.nodes.find(n => n.id === edge.target);
 				if (!a || !b || !this.isShown(a) || !this.isShown(b)) continue;
@@ -843,9 +915,9 @@ export class SimilarityMap {
 			return;
 		}
 		this.tooltip.hidden = false;
-		const radius = similarityRadius(this.seedScore.get(node.id));
+		const radius = similarityRadius(this.distanceScores.get(node.id));
 		this.tooltip.textContent = this.layoutMode === "radial"
-			? `${node.title}\n${node.isSeed ? tr("比较中心", "Comparison paper") : radius === null ? tr("数据不足", "Insufficient data") : tr(`相似度 ${this.seedScore.get(node.id)!.toFixed(2)}`, `Similarity ${this.seedScore.get(node.id)!.toFixed(2)}`)}`
+			? `${node.title}\n${node.isSeed ? tr("比较中心", "Comparison paper") : radius === null ? tr("数据不足", "Insufficient data") : `${this.comparisonLabel} ${this.seedScore.get(node.id)!.toFixed(2)}`}`
 			: node.title;
 		const width = this.tooltip.offsetWidth || 180;
 		const height = this.tooltip.offsetHeight || 32;
@@ -896,6 +968,7 @@ export class SimilarityMap {
 	}
 
 	private draw(): void {
+		this.onDraw?.();
 		const ctx = this.ctx;
 		if (!ctx || !this.alive) return;
 		const width = this.cssWidth;
@@ -917,8 +990,9 @@ export class SimilarityMap {
 		const byId = new Map(this.nodes.map((node) => [node.id, node]));
 		const focus = this.focus;
 		ctx.lineCap = "round";
-		for (const edge of this.edges) {
-			if (this.layoutMode === "radial") break;
+		const visibleEdges = this.visibleConnections();
+		this.onVisibleConnections?.(this.layoutMode === "radial" ? visibleEdges : null);
+		for (const edge of visibleEdges) {
 			const a = byId.get(edge.source);
 			const b = byId.get(edge.target);
 			if (!a || !b || !a.shown || !b.shown) continue;
@@ -932,7 +1006,9 @@ export class SimilarityMap {
 			const by = b.y * this.k + this.ty;
 			// 默认对齐 Obsidian 图谱：细、浅、中性灰；聚焦时才按关系类型着色。
 			const sameCommunity = this.communities.get(edge.source) === this.communities.get(edge.target);
-			const strokeStyle = dimmed
+			const strokeStyle = this.layoutMode === "radial"
+				? hexRgba(RELATION_COLOR[kind], dimmed ? 0.25 : 0.85)
+				: dimmed
 				? "rgba(90, 96, 106, 0.06)"
 				: focused
 					? hexRgba(RELATION_COLOR[kind], 0.85)
@@ -973,16 +1049,16 @@ export class SimilarityMap {
 			ctx.beginPath(); ctx.arc(this.tx, this.ty, radius, 0, Math.PI * 2); ctx.stroke();
 		}
 		const active = this.nodes.find(node => node.id === (this.dragging?.kind === "node" ? this.dragging.id : this.hoverId ?? this.selectedId));
-		if (active && !active.isSeed && active.shown && similarityRadius(this.seedScore.get(active.id)) !== null) {
+		if (active && !active.isSeed && active.shown && similarityRadius(this.distanceScores.get(active.id)) !== null) {
 			ctx.globalAlpha = 0.4;
 			ctx.beginPath(); ctx.moveTo(this.tx, this.ty); ctx.lineTo(active.x * this.k + this.tx, active.y * this.k + this.ty); ctx.stroke();
 			if (this.dragging?.kind === "node") {
 				ctx.setLineDash([4, 5]);
-				ctx.beginPath(); ctx.arc(this.tx, this.ty, similarityRadius(this.seedScore.get(active.id))! * this.k, 0, Math.PI * 2); ctx.stroke();
+				ctx.beginPath(); ctx.arc(this.tx, this.ty, similarityRadius(this.distanceScores.get(active.id))! * this.k, 0, Math.PI * 2); ctx.stroke();
 			}
 		}
 		ctx.globalAlpha = 0.75;
-		if (this.nodes.some(node => !node.isSeed && similarityRadius(this.seedScore.get(node.id)) === null)) {
+		if (this.nodes.some(node => !node.isSeed && similarityRadius(this.distanceScores.get(node.id)) === null)) {
 			ctx.textAlign = "left";
 			ctx.fillText(tr("数据不足", "Insufficient data"), 335 * this.k + this.tx, -195 * this.k + this.ty);
 		}
@@ -1042,7 +1118,7 @@ export class SimilarityMap {
 		ctx.arc(x, y, radius, 0, Math.PI * 2);
 		const active = node.id === this.hoverId || node.id === this.selectedId;
 		const classic = this.classicGlow.has(node.id) && !node.isSeed;
-		const beat = classic ? classicBreath(node.id) : 0;
+		const beat = classic && this.animationsAllowed() ? classicBreath(node.id) : 0;
 		ctx.fillStyle = this.colorMode === "graph" && active ? this.graphNodeFocused : node.color;
 		ctx.shadowColor = "rgba(60, 64, 70, 0.18)";
 		ctx.shadowBlur = 5;
@@ -1103,9 +1179,13 @@ export class SimilarityMap {
 	}
 
 	private rebuild(nodes: readonly PaperNode[], resetView: boolean): void {
-		const placed = new Map(placeLayout(this.layoutMode, nodes, this.edges, this.seedScore).map((node) => [node.id, node]));
+		this.distanceScores = radialDistanceScores(nodes, this.seedScore, this.distanceScale);
+		const placed = new Map(placeLayout(this.layoutMode, nodes, this.edges, this.layoutMode === "radial" ? this.distanceScores : this.seedScore).map((node) => [node.id, node]));
 		this.nodes = nodes.map((node) => {
 			const at = placed.get(node.id);
+			if (this.layoutMode === "radial" && !node.isSeed && similarityRadius(this.distanceScores.get(node.id)) !== null) {
+				this.orbitAngles.set(node.id, Math.atan2(at?.y ?? 0, at?.x ?? 0));
+			}
 			return {
 				...node,
 				x: at?.x ?? 0,

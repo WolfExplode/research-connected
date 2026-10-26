@@ -175,7 +175,7 @@ export function indexLiteratureFiles(
 	for (const file of files) {
 		const frontmatter = file.frontmatter;
 		if (!frontmatter) continue;
-		const note = { path: file.path, reading: readingValue(frontmatter["rc-status"]) };
+		const note = { path: file.path, reading: readingValue(frontmatter.reading_status) ?? readingValue(frontmatter["rc-status"]) };
 		const doi = keys.map((key) => normalizeDoi(frontmatterText(frontmatter[key]))).find((value): value is string => Boolean(value));
 		const id = frontmatterText(frontmatter.openalex)?.match(/W\d+/i)?.[0]?.toUpperCase();
 		if (doi) remember(byDoi, doi, note);

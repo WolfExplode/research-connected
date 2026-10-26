@@ -1,5 +1,6 @@
 import type { StagedPaper } from "./staging";
 import type { ResearchProject } from "./project-state";
+import type { DoiRecovery } from "./doi-recovery";
 export type SampleDepth = "standard" | "extended" | "deep";
 
 export interface ConnectedPapersSettings {
@@ -13,6 +14,8 @@ export interface ConnectedPapersSettings {
 	llmModel: string;
 	llmSendAbstracts: boolean;
 	maxNodes: number;
+	/** Penalize redundant candidates when filling a citation graph. */
+	diversifyResults?: boolean;
 	sampleDepth: SampleDepth;
 	/** Cross-check OpenAlex numbers against Semantic Scholar and backfill missing reference lists. */
 	s2Reconcile: boolean;
@@ -36,6 +39,8 @@ export interface ConnectedPapersSettings {
 	graftedBySeed: Record<string, string[]>;
 	researchProjects: Record<string, ResearchProject>;
 	activeQuestion?: string;
+	/** Verified DOI metadata and one-day negative lookup cache, keyed by bibliography. */
+	doiRecoveries?: Record<string, DoiRecovery>;
 }
 
 export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
@@ -49,6 +54,7 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	llmModel: "",
 	llmSendAbstracts: false,
 	maxNodes: 50,
+	diversifyResults: true,
 	sampleDepth: "standard",
 	s2Reconcile: true,
 	semanticEmbedding: true,

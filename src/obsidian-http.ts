@@ -7,6 +7,7 @@ const SERVICE_NAME: Record<string, string> = {
 	"api.semanticscholar.org": "Semantic Scholar",
 	"api.opencitations.net": "OpenCitations",
 	"api.crossref.org": "Crossref",
+	"www.ebi.ac.uk": "Europe PMC",
 };
 
 function serviceName(url: string): string {

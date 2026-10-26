@@ -31,7 +31,6 @@ export function mountSidebarResize(
 
 	const apply = (next: number): void => {
 		width = clampSidebarWidth(next, min, max);
-		sidebar.style.width = `${width}px`;
 		sidebar.style.setProperty("--cpo-sidebar-width", `${width}px`);
 		handle.setAttribute("aria-valuemin", String(min));
 		handle.setAttribute("aria-valuemax", String(max));

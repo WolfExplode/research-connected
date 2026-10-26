@@ -42,16 +42,17 @@ export function paintPaperActions(
 			options.setStaged(paper, seedId, !before, source);
 			button.disabled = true;
 			button.removeAttribute("title");
+			card.querySelector(".cpo-paper-stage-error")?.remove();
 			try {
 				await options.persist?.(source);
 				paintStage();
 			} catch {
 				options.setStaged(paper, seedId, before, source);
 				paintStage();
-				let error = row.querySelector<HTMLElement>(".cpo-paper-action-error");
+				let error = card.querySelector<HTMLElement>(".cpo-paper-stage-error");
 				if (!error) {
 					error = createSpan();
-					error.className = "cpo-paper-action-error";
+					error.className = "cpo-paper-action-error cpo-paper-stage-error";
 					error.setAttribute("role", "status");
 					card.append(error);
 				}

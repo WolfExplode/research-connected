@@ -1,6 +1,7 @@
 import { tr } from "./i18n";
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
+import type { SimilarityKind } from "./paper-comparison";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
 export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged" | "excluded";
 
@@ -66,6 +67,8 @@ export function paintPaperStateBadges(host: HTMLElement, paper: PaperStateLike, 
 }
 
 export interface GraphChromeOptions {
+	similarityKind?: SimilarityKind;
+	onSimilarity?: (kind: SimilarityKind) => void;
 	layouts: readonly LayoutMode[];
 	layout: LayoutMode;
 	noteButton: boolean;
@@ -83,10 +86,14 @@ export interface GraphChromeOptions {
 }
 
 export interface GraphChrome {
+	setSimilarityKind(kind: SimilarityKind): void;
+	setCitationSimilarityAvailable(available: boolean): void;
 	setLayout(mode: LayoutMode): void;
 	setSimilarityAvailable(available: boolean): void;
 	setResearchVisible(visible: boolean): void;
 	setYears(min: number, max: number): void;
+	/** Restore controls without invoking user-action callbacks or scheduling saves. */
+	restoreView(view: { layout: LayoutMode; similarityKind?: SimilarityKind; scrubYear: number | null }): void;
 	/** 新图没有任何年份时收起滑块行，避免旧范围把节点全部过滤掉。 */
 	clearYears(): void;
 	/** 同步页签按钮高亮（不触发 onTab，由调用方自己渲染）。 */
@@ -176,11 +183,28 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	};
 
 	const layoutButtons = new Map<LayoutMode, HTMLButtonElement>();
+	let similarityKind = options.similarityKind ?? "text";
+	const similarityButtons = new Map<SimilarityKind, HTMLButtonElement>();
+	const similarityRow = createDiv();
+	similarityRow.className = "cpo-similarity-subviews";
+	similarityRow.setAttribute("role", "group");
+	similarityRow.setAttribute("aria-label", tr("相似度比较方式", "Similarity comparison"));
+	const syncSimilarity = (): void => {
+		similarityRow.hidden = layout !== "radial";
+		for (const [kind, button] of similarityButtons) setPressed(button, kind === similarityKind && layout === "radial");
+	};
+	const selectSimilarity = (kind: SimilarityKind): void => {
+		if (similarityButtons.get(kind)?.disabled) return;
+		similarityKind = kind;
+		syncSimilarity();
+		options.onSimilarity?.(kind);
+	};
 	for (const mode of options.layouts) {
 		const button = pressButton(LAYOUT_LABEL[mode], mode === layout, () => {
 			stop();
 			layout = mode;
 			for (const [key, item] of layoutButtons) setPressed(item, key === mode);
+			syncSimilarity();
 			syncScrub();
 			options.onLayout(mode);
 		});
@@ -197,7 +221,26 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		button.replaceChildren(icon, label);
 		layoutButtons.set(mode, button);
 		layoutRow.append(button);
+		if (mode === "radial") {
+			for (const [kind, label] of [["text", tr("文本", "Text")], ["citations", tr("引用", "Citations")]] as const) {
+				const child = pressButton(label, false, () => {
+					selectSimilarity(kind);
+					if (layout !== "radial") button.click();
+				});
+				child.dataset.similarity = kind;
+				const fullLabel = createSpan(); fullLabel.className = "cpo-similarity-name"; fullLabel.textContent = label;
+				const shortLabel = createSpan(); shortLabel.className = "cpo-similarity-short";
+				shortLabel.textContent = kind === "text" ? tr("文", "Txt") : tr("引", "Cite");
+				shortLabel.setAttribute("aria-hidden", "true");
+				child.replaceChildren(fullLabel, shortLabel);
+				child.setAttribute("aria-label", kind === "text" ? tr("文本相似度", "Text similarity") : tr("引用相似度", "Citation similarity"));
+				similarityButtons.set(kind, child);
+				similarityRow.append(child);
+			}
+			layoutRow.append(similarityRow);
+		}
 	}
+	syncSimilarity();
 
 	const range = createEl("input");
 	range.type = "range";
@@ -297,9 +340,28 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 	actions.append(tabRow, output);
 
 	return {
+		restoreView(view): void {
+			stop();
+			layout = view.layout;
+			similarityKind = view.similarityKind ?? "text";
+			for (const [key, button] of layoutButtons) setPressed(button, key === layout);
+			syncSimilarity();
+			scrubRow.hidden = layout !== "temporal" || !hasYears;
+			range.value = String(view.scrubYear ?? maxYear);
+			readout.textContent = view.scrubYear === null || view.scrubYear >= maxYear
+				? tr("全部年份", "All years") : tr(`截至 ${view.scrubYear}`, `Through ${view.scrubYear}`);
+		},
+		setSimilarityKind: selectSimilarity,
+		setCitationSimilarityAvailable(available): void {
+			const button = similarityButtons.get("citations");
+			if (button) { button.disabled = !available; button.title = available ? "" : tr("此结果尚无引用数据", "Citation data is unavailable for these results"); }
+			if (!available && similarityKind === "citations") selectSimilarity("text");
+		},
 		setSimilarityAvailable(available): void {
 			const button = layoutButtons.get("radial");
 			if (button) button.disabled = !available;
+			const text = similarityButtons.get("text");
+			if (text) text.disabled = !available;
 			if (!available && layout === "radial") layoutButtons.get("force2d")?.click();
 		},
 		setLayout(mode: LayoutMode): void {
@@ -432,40 +494,27 @@ export function mountBottomSheet(host: HTMLElement, options?: { collapsible?: bo
 	};
 }
 
-const popovers = new Set<HTMLDetailsElement>();
-let popoverListening = false;
-
-function ensurePopoverListeners(): void {
-	if (popoverListening || typeof document === "undefined") return;
-	popoverListening = true;
-	document.addEventListener("pointerdown", (event) => {
-		const target = event.target;
-		for (const menu of [...popovers]) {
-			if (!menu.isConnected) { popovers.delete(menu); continue; }
-			if (!menu.open || (target instanceof Node && menu.contains(target))) continue;
-			menu.open = false;
-		}
-	});
-	document.addEventListener("keydown", (event) => {
-		if (event.key !== "Escape") return;
-		for (const menu of [...popovers]) {
-			if (!menu.isConnected) { popovers.delete(menu); continue; }
-			menu.open = false;
-		}
-	});
-}
-
-/** A details menu closes itself: item click, outside pointer, or Escape. */
+/** Menus own their document listeners, including in Obsidian popout windows. */
 export function registerPopover(menu: HTMLDetailsElement): () => void {
-	popovers.add(menu);
-	ensurePopoverListeners();
-	const onClick = (event: Event): void => {
-		const target = event.target;
-		if (target instanceof Element && target.closest("button")) menu.open = false;
+	const doc = menu.ownerDocument;
+	const outside = (event: PointerEvent): void => {
+		if (menu.open && event.target && !menu.contains(event.target as Node)) menu.open = false;
 	};
+	const escape = (event: KeyboardEvent): void => {
+		if (event.key !== "Escape" || !menu.open) return;
+		menu.open = false;
+		menu.querySelector("summary")?.focus();
+		event.preventDefault(); event.stopPropagation();
+	};
+	const onClick = (event: Event): void => {
+		if ((event.target as Element | null)?.closest?.("button")) menu.open = false;
+	};
+	doc.addEventListener("pointerdown", outside);
+	doc.addEventListener("keydown", escape, true);
 	menu.addEventListener("click", onClick);
 	return () => {
-		popovers.delete(menu);
+		doc.removeEventListener("pointerdown", outside);
+		doc.removeEventListener("keydown", escape, true);
 		menu.removeEventListener("click", onClick);
 	};
 }

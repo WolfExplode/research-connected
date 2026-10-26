@@ -1,7 +1,7 @@
 import { mountGraphApp } from "../src/app";
 import { EXAMPLE_DOI } from "../src/constants";
 import { explainStatus, OpenAlexError, type GetJson } from "../src/openalex";
-import { allowedExternalUrl } from "../src/safe-url";
+import { openExternal } from "../src/open-external";
 import { DEFAULT_SETTINGS } from "../src/settings-model";
 import { nicholsSnapshot, workIdentityFixtureGet } from "./work-identity-fixture";
 import { normalizeProjects } from "../src/project-state";
@@ -39,9 +39,6 @@ mountGraphApp(root, {
 	},
 	getJson: identity ? workIdentityFixtureGet : offline ? fixtureGet : getJson,
 	postJson: offline ? fixturePost : undefined,
-	openExternal: (url) => {
-		const safe = allowedExternalUrl(url);
-		if (safe) window.open(safe, "_blank", "noopener,noreferrer");
-	},
+	openExternal,
 	initialDoi: identity ? "10.2307/415601" : demo || offline ? EXAMPLE_DOI : undefined,
 });

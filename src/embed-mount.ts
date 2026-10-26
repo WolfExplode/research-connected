@@ -1,5 +1,13 @@
+import { readingChangePending, saveReadingState } from "./workflow/reading-state";
+import { createComparisonCitations } from "./workflow/comparison-citations";
+import { graphApiStatus } from "./api-status";
+import { mountNodePopover } from "./node-popover";
 import { paperRecords, workIndex, WORK_IDENTITY_VERSION } from "./work-identity";
 import { isChinese, tr } from "./i18n";
+import { mountSimilarityExplorer } from "./similarity-explorer";
+import { comparisonData, type SimilarityKind, type StoredTextEvidence, type TextComparison } from "./paper-comparison";
+import { paintComparisonCard } from "./detail-cards";
+import { paintLocalPaperAction, requestLibraryBridge } from "./library-bridge";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
@@ -27,6 +35,7 @@ import { observeResponsiveMode } from "./responsive";
 export interface EmbedDeps {
 	source: string;
 	getSettings: () => ConnectedPapersSettings;
+	persistSettings?: () => Promise<void> | void;
 	getJson: GetJson;
 	postJson?: PostJson;
 	openExternal: (url: string) => void;
@@ -50,6 +59,8 @@ const cache = new Map<string, SimilarityGraph>();
 
 /** Filter and layout remembered per block key across remounts. */
 interface EmbedViewState {
+	distanceScale?: import("./layout-modes").DistanceScale;
+	similarityKind?: SimilarityKind;
 	filter: GraphFilter;
 	layout: LayoutMode;
 }
@@ -57,6 +68,13 @@ const viewStates = new Map<string, EmbedViewState>();
 
 /** Reading view and Live Preview share this DOM. It does not import Obsidian. */
 export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
+	const saveReading = (paper: PaperNode, seedId: string, reading: ReadingStatus, previous: ReadingStatus, source: string): Promise<void> =>
+		saveReadingState({ projects: deps.getSettings().researchProjects, seedId, paper, reading, previous,
+			persist: () => deps.stagePaper?.(paper, seedId, source), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
+			status.textContent = error instanceof Error ? error.message : tr("阅读状态保存失败", "Could not save reading status");
+			throw error;
+		});
+
 	root.classList.add("cpo-embed-host");
 	root.replaceChildren();
 	const parsed = parseEmbed(deps.source);
@@ -205,6 +223,59 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		map.setScrubYear(viewFilter.scrubYear);
 	};
 	let layoutMode: LayoutMode = saved?.layout ?? spec.layout;
+	let similarityKind: SimilarityKind = saved?.similarityKind ?? "text";
+	let storedText: StoredTextEvidence[] = [];
+	let comparison = { text: new Map<string, number>(), citations: new Map<string, number>(), details: new Map<string, TextComparison>() };
+	let storedTextRevision = 0;
+	let storedTextGraph: SimilarityGraph | null = null;
+	surface.distanceScale.value = saved?.distanceScale ?? "relative";
+	let scopedActive = false;
+	const similarityExplorer = mountSimilarityExplorer(stage, requestLibraryBridge, () => {
+		if (!alive) return;
+		refreshSimilarityScores();
+		const current = similarityExplorer.result?.graph.nodes.find(paper => paper.id === selected?.id)
+			?? similarityExplorer.result?.graph.nodes.find(paper => paper.isSeed);
+		if (current && currentGraph) showDetail(current, currentGraph, null);
+	}, paper => {
+		const doi = paper.doiUrl?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "");
+		if (doi) deps.openGraph?.({ kind: "doi", value: doi });
+		else if (/^W\d+$/i.test(paper.id)) deps.openGraph?.({ kind: "openalex", value: paper.id });
+	}, undefined, createComparisonCitations(() => new OpenAlexClient(deps.getJson, deps.getSettings())));
+	function refreshSimilarityScores(): void {
+		surface.apiStatus.refresh();
+		surface.diversifyResults.disabled = reload.disabled || layoutMode === "radial";
+		surface.diversityHint.textContent = layoutMode === "radial"
+			? tr("相似度搜索直接按文本分数排序；多样化仅用于引用邻居筛选。", "Similarity search ranks directly by text score; diversity applies only to citation-neighbor selection.")
+			: tr("减少重复候选，为不同论文留出空间。更改后重新构建引用图谱。", "Reduce redundant candidates to make room for different papers. Changes rebuild the citation graph.");
+		map.setDistanceScale(surface.distanceScale.value === "absolute" ? "absolute" : "relative");
+		surface.diversifyResults.parentElement!.title = surface.diversityHint.textContent ?? "";
+		root.classList.toggle("is-similarity", layoutMode === "radial");
+		root.classList.toggle("is-citation-similarity", layoutMode === "radial" && similarityKind === "citations");
+		const scoped = similarityExplorer.update(currentGraph, storedText, layoutMode === "radial", similarityKind);
+		if (scoped) {
+			comparison = scoped.scores;
+			map.adoptGraph(scoped.graph.nodes, scoped.graph.edges, comparison[similarityKind]);
+			map.setComparisonScores(comparison[similarityKind], similarityKind);
+			scopedActive = true; return;
+		}
+		if (scopedActive && currentGraph) map.adoptGraph(currentGraph.nodes, currentGraph.edges, currentGraph.seedScore);
+		scopedActive = false;
+		if (!currentGraph) return;
+		comparison = comparisonData(currentGraph, storedText);
+		map.setComparisonScores(layoutMode === "radial" ? comparison[similarityKind] : currentGraph.seedScore, similarityKind);
+	}
+	function loadStoredText(): void {
+		const revision = ++storedTextRevision, target = currentGraph;
+		if (storedTextGraph !== target) { storedText = []; storedTextGraph = target; }
+		refreshSimilarityScores();
+		const bridge = requestLibraryBridge();
+		if (!target || !bridge?.textEvidence) return;
+		void bridge.textEvidence(target.nodes).then(rows => {
+			if (!alive || storedTextRevision !== revision || currentGraph !== target) return;
+			storedText = rows; refreshSimilarityScores();
+			if (selected) showDetail(selected, target, null);
+		}).catch(() => { /* Keep existing graph evidence when sidecars cannot be read. */ });
+	}
 	const graphKey = mountGraphKey(rail, () => viewFilter, (next) => {
 		viewFilter = next;
 		applyFilter();
@@ -214,6 +285,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (seed && currentGraph) showDetail(seed, currentGraph, null);
 	});
 	graphKey.paintColor(layoutMode);
+	map.onVisibleConnections = edges => graphKey.setVisibleConnections(edges);
+	surface.showAllConnections.addEventListener("change", () => map.setShowAllCitationConnections(surface.showAllConnections.checked));
 	let tab: GraphTab = "graph";
 	let currentGraph: SimilarityGraph | null = null;
 	let sourceGraph: SimilarityGraph | null = null;
@@ -224,16 +297,25 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let selectedLink: GraphEdge | null = null;
 	let chrome: GraphChrome | null = null;
 	map.onNodeMenu = (paper, x, y) => {
-		if (!paper || !currentGraph || !deps.openGraph) {
+		if (!paper || !currentGraph || (!deps.openGraph && !scopedActive)) {
 			nodeMenu.hidden = true;
 			return;
 		}
+		seedItem.hidden = !scopedActive && !deps.openGraph;
+		seedItem.disabled = paper.isSeed;
+		seedItem.textContent = scopedActive ? tr("设为种子论文", "Set as seed paper") : tr("在图谱中打开", "Open in graph");
+		paintLocalPaperAction(nodeMenu, paper, requestLibraryBridge(), true);
 		nodeMenu.dataset.paperId = paper.id;
 		nodeMenu.hidden = false;
 		placeNodeMenu(stage, nodeMenu, x, y);
 	};
 	seedItem.addEventListener("click", () => {
-		const paper = currentGraph?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
+		const paper = (scopedActive ? similarityExplorer.result?.graph : currentGraph)?.nodes.find((node) => node.id === nodeMenu.dataset.paperId);
+		if (paper && scopedActive) {
+			nodeMenu.hidden = true;
+			similarityExplorer.setCenter(paper);
+			return;
+		}
 		if (paper) deps.openGraph?.({ kind: "openalex", value: paper.id });
 		nodeMenu.hidden = true;
 	});
@@ -276,17 +358,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (!seed) return;
 			const settings = deps.getSettings();
 			const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
-			paintPaperWorkflowState(card, paper, state, async (reading, previous) => {
-				updateProjectPaperState(settings.researchProjects, seed.id, paper, { reading });
-				try {
-					await deps.stagePaper?.(paper, seed.id, state.source);
-					await deps.syncLiteratureReading?.(paper, reading);
-				}
-				catch (error) {
-					updateProjectPaperState(settings.researchProjects, seed.id, paper, { reading: previous });
-					throw error;
-				}
-			}, async () => {
+			paintPaperWorkflowState(card, paper, state, (reading, previous) => saveReading(paper, seed.id, reading, previous, state.source), async () => {
 				updateProjectPaperState(settings.researchProjects, seed.id, paper, { excluded: true });
 				try {
 					await deps.stagePaper?.(paper, seed.id, state.source);
@@ -312,6 +384,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	chrome = mountGraphChrome(layoutHost, {
+		similarityKind,
 		layouts: ["force2d", "temporal", "radial"],
 		layout: layoutMode,
 		noteButton: Boolean(deps.createNote),
@@ -321,8 +394,14 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		onLayout: (mode) => {
 			layoutMode = mode;
 			map.setLayout(layoutMode);
+			refreshSimilarityScores();
+			if (selected && currentGraph) showDetail(selected, currentGraph, null);
 			map.setColorMode(defaultColorMode(layoutMode));
 			graphKey.paintColor(layoutMode);
+		},
+		onSimilarity: (kind) => {
+			similarityKind = kind; refreshSimilarityScores();
+			if (selected && currentGraph) showDetail(selected, currentGraph, null);
 		},
 		onScrub: (year) => {
 			viewFilter = { ...viewFilter, scrubYear: year };
@@ -368,7 +447,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			await chrome?.copyText(markdown, tr("笔记内容", "Note contents"));
 			return;
 		}
-		const nodes = orderedForExport(visibleNodes(currentGraph.nodes, viewFilter));
+		const nodes = orderedForExport(visibleNodes(similarityExplorer.result?.graph.nodes ?? currentGraph.nodes, viewFilter));
 		const text = kind === "bibtex" ? toBibTeX(nodes) : kind === "yaml" ? toYamlList(nodes) : toMarkdownTable(nodes);
 		await chrome?.copyText(text, kind === "bibtex" ? "BibTeX" : kind === "yaml" ? "YAML" : tr("表格", "Table"));
 	};
@@ -424,6 +503,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	placeDetailPlaceholder();
 
 	const showDetail = (paper: PaperNode | null, graph: SimilarityGraph, link: GraphEdge | null): void => {
+		if (paper && selected?.id === paper.id && readingChangePending(deps.getSettings().researchProjects, currentGraph?.nodes.find(node => node.isSeed)?.id ?? paper.id, paper)) return;
+		surface.announceSelection(paper?.title ?? "");
 		if (!paper) {
 			placeDetailPlaceholder();
 			return;
@@ -431,6 +512,22 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		selected = paper;
 		selectedLink = link;
 		detail.replaceChildren();
+		if (similarityExplorer.paintDetail(detail, paper, similarityKind, deps.openExternal)) {
+			// Keep workflow state tied to the saved project, even when the comparison center changes.
+			const projectId = currentGraph?.nodes.find(node => node.isSeed)?.id ?? paper.id;
+			const project = deps.getSettings().researchProjects[projectId];
+			const state = { ...(project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() }) };
+			const noted = deps.lookupLiteratureNote?.(paper);
+			if (noted?.reading && !readingChangePending(deps.getSettings().researchProjects, projectId, paper)) state.reading = noted.reading;
+			paintPaperWorkflowState(detail, paper, state, (reading, previous) => saveReading(paper, projectId, reading, previous, state.source));
+			paintPaperActions(detail, paper, projectId, null, null, {
+				getPaperState: (seedId, paperId) => deps.getSettings().researchProjects[seedId]?.paperStates?.[paperId],
+				setStaged: (target, seedId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, seedId, target, { staged, source }); },
+				persist: deps.stagePaper ? source => deps.stagePaper!(paper, projectId, source) : undefined,
+				openExternal: deps.openExternal,
+			});
+			map.setSelected(paper.id); sheet.setSummary(paper.title, tr("相似度搜索结果", "Similarity search result")); return;
+		}
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
 		const seed = graph.nodes.find((node) => node.isSeed) ?? null;
 		const byId = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -450,20 +547,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		});
 		let paperState = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
-		if (noted?.reading && noted.reading !== paperState.reading) {
+		if (noted?.reading && noted.reading !== paperState.reading && !readingChangePending(deps.getSettings().researchProjects, seedId, paper)) {
 			paperState = { ...paperState, reading: updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: noted.reading }).reading };
 			void deps.stagePaper?.(paper, seedId, paperState.source);
 		}
-		paintPaperWorkflowState(detail, paper, paperState, async (reading, previous) => {
-			updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading });
-			try {
-				await deps.stagePaper?.(paper, seedId, paperState.source);
-				await deps.syncLiteratureReading?.(paper, reading);
-			} catch (error) {
-				updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: previous });
-				throw error;
-			}
-		});
+		paintPaperWorkflowState(detail, paper, paperState, (reading, previous) => saveReading(paper, seedId, reading, previous, paperState.source));
 		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote, noted.alternatives);
 		const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
 		const stageEdge = seed && !paper.isSeed ? findEdge(graph.edges, paper.id, seed.id) : null;
@@ -475,7 +563,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			openExternal: deps.openExternal,
 		});
 		paintAbstractCard(detail, paper, embedAbstractText);
-		if (!paper.isSeed && seed) {
+		if (!paper.isSeed && seed && layoutMode === "radial") {
+			paintComparisonCard(detail, similarityKind, comparison[similarityKind].get(paper.id), comparison.details.get(paper.id));
+		} else if (!paper.isSeed && seed) {
 			const toSeed = findEdge(graph.edges, paper.id, seed.id);
 			if (toSeed) {
 				const from = byId.get(toSeed.source);
@@ -493,9 +583,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				const score = graph.seedScore.get(paper.id);
 				const card = createEl("section");
 				card.className = "cpo-card";
-				if (score !== undefined) paintMeter(card, tr("图谱综合相似度", "Overall graph similarity"), score, tr("结构 + 语义信号", "Structure and semantic signals"));
+				if (score !== undefined) paintMeter(card, tr("图谱候选选择分", "Graph selection score"), score, tr("用于候选选择的结构和文本/主题信号", "Structure and text/topic signals used for candidate selection"));
 				const semantic = graph.semanticScores?.get(paper.id);
-				if (semantic !== undefined) paintMeter(card, tr("文本相似度", "Text similarity"), semantic, semanticHintFor(graph.semanticMode), true);
+				if (semantic !== undefined) paintMeter(card, tr("文本/主题信号", "Text/topic signal"), semantic, semanticHintFor(graph.semanticMode), true);
 				const note = createEl("p");
 				note.className = "cpo-fact-note";
 				note.textContent = score === undefined ? tr("与种子没有直接连线", "No direct link to the seed") : tr(`与种子没有直接引用记录 · ${SIMILARITY_NOT_CITATION}`, `No direct citation to the seed recorded · ${SIMILARITY_NOT_CITATION}`);
@@ -590,14 +680,19 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	});
 
 	const snapshotView = (): void => {
-		rememberViewState(stateKey, { filter: viewFilter, layout: layoutMode });
+		rememberViewState(stateKey, { filter: viewFilter, layout: layoutMode, similarityKind, distanceScale: map.getViewState().distanceScale });
 	};
 
+	const incompleteCitationChecks = new WeakSet<SimilarityGraph>();
+	surface.apiStatus.read = () => graphApiStatus(currentGraph, requestLibraryBridge(), similarityExplorer.apiError, Boolean(currentGraph && incompleteCitationChecks.has(currentGraph)));
+	const nodePopover = mountNodePopover(stage, canvas, map, () => !body.classList.contains("is-sidebar-collapsed"));
 	map.onSelect = (paper) => {
+		nodePopover.show(paper, similarityKind, comparison[similarityKind].get(paper?.id ?? ""), comparison.details.get(paper?.id ?? ""), requestLibraryBridge());
 		if (paper && currentGraph) showDetail(paper, currentGraph, null);
 		else placeDetailPlaceholder();
 	};
 	map.onEdgeSelect = (edge) => {
+		nodePopover.hide();
 		if (!currentGraph || !edge) {
 			placeDetailPlaceholder();
 			return;
@@ -625,6 +720,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		graphKey.paintColor(layoutMode);
 		map.setLayout(layoutMode);
 		map.setColorMode(layoutMode === spec.layout ? spec.color : defaultColorMode(layoutMode));
+		loadStoredText();
 		applyFilter();
 		const span = yearSpan(graph.nodes);
 		if (span) chrome?.setYears(...span);
@@ -665,7 +761,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					if (citing && cited) mergeOpenCitation(graph, citing, cited);
 				}
 			} catch {
-				// A failed lookup skips that paper; the map is already complete without it.
+				incompleteCitationChecks.add(graph);
+				surface.apiStatus.refresh();
 			}
 		}
 		if (!alive || token !== generation || currentGraph !== graph) return;
@@ -680,10 +777,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const token = ++generation;
 		placeDetailPlaceholder();
 		tooltip.hidden = true;
-		message.hidden = false;
-		messageText.textContent = STAGE_TEXT.resolving;
+		message.hidden = true;
 		status.textContent = STAGE_TEXT.resolving;
 		reload.disabled = true;
+		surface.diversifyResults.disabled = true;
+		surface.diversifyResults.checked = deps.getSettings().diversifyResults !== false;
 		const settings = { ...deps.getSettings() };
 		const cap = spec.maxNodes ?? settings.maxNodes;
 		const key = cacheKey(spec.target, cap, spec.depth, settings);
@@ -699,7 +797,6 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					{ ...settings, maxNodes: firstCap },
 					(stage) => {
 						if (token === generation) {
-							messageText.textContent = STAGE_TEXT[stage];
 							status.textContent = STAGE_TEXT[stage];
 						}
 					},
@@ -722,7 +819,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			messageText.textContent = error instanceof Error ? error.message : tr("构建图谱失败。", "Could not build the graph.");
 			status.textContent = tr("图谱没有建起来", "The graph could not be built");
 		} finally {
-			if (token === generation) reload.disabled = false;
+			if (token === generation) {
+				reload.disabled = false;
+				surface.diversifyResults.disabled = layoutMode === "radial";
+			}
 		}
 	};
 
@@ -732,6 +832,27 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		void load(true);
 	});
 	void load(false);
+	surface.distanceScale.addEventListener("change", () => {
+		map.setDistanceScale(surface.distanceScale.value === "absolute" ? "absolute" : "relative");
+		snapshotView();
+	});
+	surface.diversifyResults.addEventListener("change", () => {
+		const settings = deps.getSettings();
+		const previous = settings.diversifyResults !== false;
+		settings.diversifyResults = surface.diversifyResults.checked;
+		surface.diversifyResults.disabled = true;
+		void (async () => {
+			try {
+				await deps.persistSettings?.();
+				if (alive) await load(true);
+			} catch (error) {
+				settings.diversifyResults = previous;
+				if (alive) status.textContent = tr("图谱选项保存失败：", "Could not save graph options: ") + String(error);
+			} finally {
+				if (alive) { surface.diversifyResults.checked = settings.diversifyResults !== false; surface.diversifyResults.disabled = false; }
+			}
+		})();
+	});
 
 	const onTheme = (): void => {
 		map.resize();
@@ -746,6 +867,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (excluded.join("\0") !== (currentGraph.excludedIds ?? []).join("\0")) renderGraph(sourceGraph, lastDepthNote);
 	};
 	window.addEventListener("research-connected-project", onProject);
+	const onLibraryChanged = (): void => { similarityExplorer.invalidate(); loadStoredText(); };
+	window.addEventListener("research-connected-library-changed", onLibraryChanged);
 
 	return () => {
 		alive = false;
@@ -753,8 +876,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		snapshotView();
 		window.removeEventListener("research-connected-theme", onTheme);
 		window.removeEventListener("research-connected-project", onProject);
+		window.removeEventListener("research-connected-library-changed", onLibraryChanged);
 		window.removeEventListener("keydown", onMenuKey);
 		map.destroy();
+		similarityExplorer.destroy();
 		chrome?.destroy();
 		sheet.destroy();
 		stopResize();
@@ -960,6 +1085,7 @@ function cacheKey(
 		settings.includeRelated ? "1" : "0",
 		// 会改变候选采样与评分语义的设置必须进 key，避免展示陈旧解释。
 		settings.sampleDepth,
+		settings.diversifyResults === false ? "nodiversity" : "diversity",
 		settings.s2Reconcile ? "s2" : "nos2",
 		settings.semanticEmbedding ? "emb" : "noemb",
 		settings.apiKey.trim() ? "keyed" : "anon",

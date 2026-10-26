@@ -9,6 +9,7 @@ import type { GraphFilter } from "./graph-filter";
 import type { PaperNode, GraphEdge } from "./types";
 
 export interface SavedGraphSnapshot {
+	textComparisons?: Array<[string, import("./paper-comparison").TextComparison]>;
 	version: 1 | 2;
 	workIdentity?: WorkIdentity;
 	savedAt: number;
@@ -36,6 +37,8 @@ export interface SavedGraphSnapshot {
 }
 
 export interface SavedView {
+	distanceScale?: import("./layout-modes").DistanceScale;
+	similarityKind?: import("./paper-comparison").SimilarityKind;
 	name: string;
 	layout: "force2d" | "temporal" | "radial";
 	selectedId: string | null;
@@ -268,6 +271,7 @@ export function saveGraphSnapshot(graph: SimilarityGraph): SavedGraphSnapshot {
 		excludedIds: graph.excludedIds,
 		crossCheck: graph.crossCheck ? [...graph.crossCheck] : undefined,
 		semanticScores: graph.semanticScores ? [...graph.semanticScores] : undefined,
+		textComparisons: graph.textComparisons ? [...graph.textComparisons] : undefined,
 		semanticMode: graph.semanticMode,
 		semanticModel: graph.semanticModel,
 		selectionRank: graph.selectionRank ? [...graph.selectionRank] : undefined,
@@ -309,6 +313,7 @@ export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 		excludedIds: Array.isArray(saved.excludedIds) ? saved.excludedIds.filter((id): id is string => typeof id === "string" && /^W\d+$/i.test(id)).slice(0, 300) : undefined,
 		crossCheck: saved.crossCheck ? new Map(saved.crossCheck) : undefined,
 		semanticScores: saved.semanticScores ? new Map(saved.semanticScores) : undefined,
+		textComparisons: saved.textComparisons ? new Map(saved.textComparisons) : undefined,
 		semanticMode: saved.semanticMode,
 		semanticModel: saved.semanticModel,
 			selectionRank: saved.selectionRank ? new Map(saved.selectionRank) : undefined,

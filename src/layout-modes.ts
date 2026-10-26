@@ -8,6 +8,24 @@ import { citationRadius, yearNormalizedCitations } from "./visual";
 export type LayoutMode = "force2d" | "temporal" | "radial";
 
 export type ColorMode = "year" | "community" | "graph" | "topic";
+export type DistanceScale = "relative" | "absolute";
+
+/** Display-only normalization. Raw scores and candidate ranking never change. */
+export function radialDistanceScores(nodes: readonly PaperNode[], scores: ReadonlyMap<string, number>, scale: DistanceScale): Map<string, number> {
+	const result = new Map(scores);
+	if (scale === "absolute") return result;
+	const values = nodes.filter(node => !node.isSeed).map(node => scores.get(node.id))
+		.filter((value): value is number => value !== undefined && Number.isFinite(value));
+	if (!values.length) return result;
+	const min = Math.min(...values), max = Math.max(...values);
+	for (const node of nodes) {
+		const value = scores.get(node.id);
+		if (node.isSeed || value === undefined || !Number.isFinite(value)) continue;
+		// Equal scores stay on one orbit; zero-only results stay at the outer boundary.
+		result.set(node.id, max - min < 1e-12 ? max <= 0 ? 0 : 0.5 : (value - min) / (max - min));
+	}
+	return result;
+}
 
 /** 平面按引用团着色；时间/放射仍用相对种子的主题相似度。 */
 export function defaultColorMode(layout: LayoutMode): ColorMode {

@@ -1,6 +1,8 @@
 import type { GraphEdge, PaperNode } from "./types";
 
 export interface DiscoveryPaper {
+	abstract?: string;
+	text_comparison?: Omit<import("./paper-comparison").TextComparison, "seedId">;
 	title: string;
 	note?: string;
 	pdf?: string | null;
@@ -15,6 +17,7 @@ export interface DiscoveryPaper {
 }
 
 export interface DiscoveryPayload {
+	scoring?: string;
 	engine: "asreview" | "paperqa";
 	mode: "rank" | "similar" | "search" | "index";
 	query?: string;
@@ -70,7 +73,7 @@ export function buildDiscoveryGraph(payload: DiscoveryPayload, limit = 30): {
 		if (!path || `local:${path}` === anchorId || unique.has(path)) continue;
 		// Labeled training examples do not have an ASReview prediction/ranking.
 		if (payload.mode === "rank" && !(typeof row.rank === "number" && Number.isFinite(row.rank) && row.rank > 0)) continue;
-		if (payload.mode === "similar" && !(typeof row.similarity === "number" && Number.isFinite(row.similarity) && row.similarity > 0)) continue;
+		if (payload.mode === "similar" && row.similarity != null && !(typeof row.similarity === "number" && Number.isFinite(row.similarity) && row.similarity >= 0)) continue;
 		unique.set(path, row);
 	}
 	for (const [path, row] of [...unique].slice(0, cap)) {
@@ -78,8 +81,10 @@ export function buildDiscoveryGraph(payload: DiscoveryPayload, limit = 30): {
 		rows.set(id, row); nodes.push(makeNode(row, id, false));
 		const value = payload.mode === "similar" ? row.similarity : payload.mode === "rank" ? row.priority : null;
 		// Search returns retrieval order, not a calibrated relevance score. Equal springs avoid inventing one.
-		const weight = typeof value === "number" && Number.isFinite(value) ? Math.max(0.01, Math.min(1, value / 100)) : 0.5;
-		seedScore.set(id, weight);
+		const score = row.text_comparison?.score ?? value;
+		const normalized = row.text_comparison?.score != null ? row.text_comparison.score : typeof value === "number" ? value / 100 : null;
+		const weight = normalized !== null && Number.isFinite(normalized) ? Math.max(0, Math.min(1, normalized)) : 0.5;
+		if (payload.mode !== "similar" || (score != null && Number.isFinite(score))) seedScore.set(id, weight);
 		edges.push({ source: anchorId, target: id, weight, structuralSimilarity: null, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "none" });
 	}
 	return { nodes, edges, rows, seedScore, total: unique.size };
