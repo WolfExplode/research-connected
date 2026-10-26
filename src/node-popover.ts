@@ -1,6 +1,6 @@
 import { tr } from "./i18n";
 import { paintMetadataCard, paintComparisonCard } from "./detail-cards";
-import { paintLocalPaperAction, type LibraryBridge } from "./library-bridge";
+import { paintLocalPaperAction, type PaperLibraryService } from "./library-panel";
 import type { SimilarityMap } from "./map-canvas";
 import type { SimilarityKind, TextComparison } from "./paper-comparison";
 import type { PaperNode } from "./types";
@@ -44,7 +44,7 @@ export function mountNodePopover(stage: HTMLElement, canvas: HTMLCanvasElement, 
 	map.onDraw = position;
 	return {
 		hide,
-		show(paper: PaperNode | null, kind: SimilarityKind, score: number | undefined, comparison: TextComparison | undefined, bridge: LibraryBridge | null | undefined): void {
+		show(paper: PaperNode | null, kind: SimilarityKind, score: number | undefined, comparison: TextComparison | undefined, bridge: PaperLibraryService | null | undefined): void {
 			if (!paper) { hide(); return; }
 			paperId = paper.id;
 			body.replaceChildren();

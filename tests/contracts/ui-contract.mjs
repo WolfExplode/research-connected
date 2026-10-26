@@ -70,7 +70,7 @@ assert.match(details, /cpo-paper-venue/, "venue renders as clean editorial line"
 assert.match(surface, /cpo-node-menu-sep/, "node menu separates graph actions, reading status, and exclusion");
 assert.match(css, /\.cpo-library-meta\b/, "saved/excluded rows use compact metadata lines");
 assert.match(css, /\.cpo-root :where\([^)]*summary[^)]*\):focus-visible/, "summary keyboard focus is shared");
-for (const file of ["app", "detail-cards", "embed-mount", "filter-controls", "graph-chrome", "graph-surface", "library-bridge", "paper-actions"]) {
+for (const file of ["app", "detail-cards", "embed-mount", "filter-controls", "graph-chrome", "graph-surface", "library-panel", "paper-actions"]) {
 	const source = readFileSync(`src/${file}.ts`, "utf8");
 	assert.doesNotMatch(source, /\.title\s*=\s*[^=]|setAttribute\(["']title["']/, `${file}: use shared hover hints instead of native titles`);
 }

@@ -17,7 +17,7 @@ const adapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "
 const ui = new Set([
 	"app.ts", "detail-cards.ts", "embed-block.ts", "embed-mount.ts", "filter-controls.ts",
 	"graph-chrome.ts", "main.ts", "map-canvas.ts", "settings.ts",
-	"sidebar-resize.ts", "view.ts", "visual.ts", "discovery-view.ts", "library-bridge.ts", "paper-labels.ts",
+	"sidebar-resize.ts", "view.ts", "visual.ts", "discovery-view.ts", "library-panel.ts", "paper-labels.ts",
 ]);
 const httpAdapters = new Set(["citation-sources.ts", "llm.ts", "obsidian-http.ts", "openalex.ts", "provider-limits.ts", "provider-pause-file.ts", "research-tools.ts", "open-access-queue.ts"]);
 const importPattern = /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g;

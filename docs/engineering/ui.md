@@ -89,7 +89,7 @@ actual themes in use. Browser fixtures do not substitute for the full host matri
 
 Save and Bookmark are separate shared actions in graph details, discovery results, prior/later
 cards, global bookmark cards, and embeds. Save creates or reuses a library note and explicitly
-attempts acquisition through the library bridge. A failed download keeps the note and records its
+attempts acquisition through the research tools. A failed download keeps the note and records its
 reason and attempt time; show a retry action beside that paper. Existing local full text shows
 In library and is not downloaded again. Availability checks and discovery never trigger acquisition.
 
@@ -103,8 +103,8 @@ it irrelevant to a question.
 Human metadata, reading notes, acquisition state, and bookmarks belong in vault notes; structured
 research records remain in tool-managed sidecars. Plugin settings retain graph/project state,
 credentials, and rebuildable snapshots rather than a competing library record. Prefer the host's
-canonical note/sidecar writer. Without an acquisition-capable bridge, retain the note and record
-download-unavailable rather than claiming a download. Never silently merge ambiguous matches.
+canonical note/sidecar writer, the research tools. Without them, Save and Bookmark explain what to
+set up and write nothing. Never silently merge ambiguous matches.
 
 Legacy project bookmarks migrate after an original-data backup. Copy each bookmark into the vault
 before clearing its old flag; preserve an existing note's explicit bookmark choice and reading

@@ -22,7 +22,7 @@ async function verify(): Promise<void> {
 		openExternal() {},
 		initialDoi: "10.1234/seed",
 		persistSettings: async () => { if (failSave) throw new Error("disk full"); },
-		libraryBridge: () => ({ version: 1, read: () => ({ doi: null, local: { state: "absent", note: null, files: [] }, providers: {} }),
+		researchLibrary: () => ({ read: () => ({ doi: null, local: { state: "absent", note: null, files: [] }, providers: {} }),
 			check: async () => { throw new Error("Unexpected availability check"); }, open() {},
 			textLibrary: async () => { libraryReads++; return [{ paper: local, note: "Research/Papers/Unseen.md" }]; } }),
 	});

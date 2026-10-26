@@ -398,9 +398,9 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 			render: (setting) => {
 				setting.controlEl.addClass("cpo-help-links");
 				for (const [text, href] of [
-					[tr("使用指南", "User guide"), "https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md"],
-					[tr("报告问题", "Report a bug"), "https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml"],
-					[tr("功能建议", "Request a feature"), "https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml"],
+					[tr("使用指南", "User guide"), "https://github.com/WolfExplode/research-connected/blob/main/docs/USER_GUIDE.md"],
+					[tr("报告问题", "Report a bug"), "https://github.com/WolfExplode/research-connected/issues/new?template=bug_report.yml"],
+					[tr("功能建议", "Request a feature"), "https://github.com/WolfExplode/research-connected/issues/new?template=feature_request.yml"],
 				]) {
 					setting.controlEl.createEl("a", { text, href, attr: { target: "_blank", rel: "noopener noreferrer" } });
 				}

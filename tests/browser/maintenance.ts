@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS, type ConnectedPapersSettings } from "../../src/settin
 import { fixtureGet } from "../../preview/fixture";
 import { saveGraphSnapshot } from "../../src/project-state";
 import type { ReadingStatus } from "../../src/project-state";
-import type { LibraryBridge } from "../../src/library-bridge";
+import type { PaperLibraryService } from "../../src/library-panel";
 import { verifyCanvasLifecycle } from "./canvas";
 import { verifyCitationComparison } from "./comparison";
 
@@ -28,7 +28,7 @@ async function verify(): Promise<void> {
 		if (failPersist) throw new Error("disk full");
 		disk = structuredClone(settings); window.dispatchEvent(new Event("research-connected-project"));
 	};
-	const bridge: LibraryBridge = { version: 1,
+	const bridge: PaperLibraryService = {
 		read: () => ({ doi: null, local: { state: "absent", note: null, files: [] }, providers: {} }),
 		check: async () => { throw new Error("Unexpected provider request"); }, open() {},
 		textLibrary: async () => { libraryCalls++; if (failLibrary) throw new Error("temporary library failure"); return []; },
@@ -40,7 +40,7 @@ async function verify(): Promise<void> {
 			if (failNote) { failPersist = failRollback; throw new Error("frontmatter write failed"); }
 			noteReading = reading;
 		},
-		libraryBridge: () => bridge,
+		researchLibrary: () => bridge,
 	};
 	let handle: GraphAppHandle = mountGraphApp(root, { ...deps, initialDoi: "10.1234/seed" });
 	const button = (selector: string): HTMLButtonElement => root.querySelector<HTMLButtonElement>(selector)!;

@@ -7,10 +7,11 @@ import type { DoiRecovery } from "./doi-recovery";
 
 declare global {
 	interface WindowEventMap {
+		/** Private to this plugin: the paper library changed in a way open graphs can show. */
 		"research-connected-library-changed": Event;
 		"research-connected-label-paper": CustomEvent<{ note: string }>;
 		"research-connected-theme": Event;
-		"research-connected-open-discovery": CustomEvent<{ payload?: DiscoveryPayload; paper?: string; question?: string; mode?: "rank" | "search"; handled?: boolean }>;
+		"research-connected-open-discovery": CustomEvent<{ paper?: string; question?: string; mode?: "rank" | "search" }>;
 	}
 }
 
@@ -21,9 +22,12 @@ export interface LibraryAvailability {
 	checking?: boolean;
 }
 
-/** The paper library's interface to graphs; ResearchLibrary implements it over the research tools. Graph state stays independent. */
-export interface LibraryBridge {
-	version: 1;
+/**
+ * The paper library as graphs see it. ResearchLibrary implements it over the research tools; checks
+ * supply only the parts they exercise, so the capabilities beyond read, check and open are optional.
+ * Graph state stays independent of it.
+ */
+export interface PaperLibraryService {
 	read(paper: PaperNode): LibraryAvailability;
 	save?(paper: PaperNode): Promise<LibraryAvailability>;
 	bookmark?(paper: PaperNode, value: boolean, options?: { onlyIfMissing?: boolean; source?: string; reading?: string }): Promise<LibraryAvailability>;
@@ -48,7 +52,7 @@ export interface DoiRecoveryAction {
 }
 
 /** A single local action shared by the identity card and graph context menu. */
-export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bridge: LibraryBridge | null | undefined, menu = false): void {
+export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bridge: PaperLibraryService | null | undefined, menu = false): void {
 	parent.querySelector(menu ? ".cpo-local-paper-menu" : ".cpo-local-paper")?.remove();
 	if (!bridge) return;
 	const local = bridge.read(paper).local;
@@ -72,7 +76,7 @@ export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bri
 	}
 }
 
-export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, bridge: LibraryBridge, openExternal: (url: string) => void, recovery?: DoiRecoveryAction): void {
+export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, bridge: PaperLibraryService, openExternal: (url: string) => void, recovery?: DoiRecoveryAction): void {
 	bridge.prefetch?.([paper]);
 	const card = createEl("section", { cls: "cpo-card cpo-library-availability" });
 	parent.append(card);

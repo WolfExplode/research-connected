@@ -1,9 +1,10 @@
 {
 	"id": "research-connected",
 	"name": "Research Connected",
-	"version": "1.9.4",
+	"version": "2.0.0",
 	"minAppVersion": "1.14.4",
-	"description": "Explore a paper's citation neighborhood as an interactive similarity map in a graph pane or note.",
-	"author": "Bai Junwei",
+	"description": "Map a paper's citation neighborhood and run a research library's paper workflows: holdings, availability, similarity and discovery.",
+	"author": "WolfExplode",
+	"authorUrl": "https://github.com/WolfExplode",
 	"isDesktopOnly": true
 }

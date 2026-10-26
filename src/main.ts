@@ -24,7 +24,6 @@ import { clamp } from "./visual";
 import { invalidateLiteratureIndex } from "./vault-note";
 import { ConnectedPapersView } from "./view";
 import { DiscoveryGraphView, DISCOVERY_VIEW } from "./discovery-view";
-import type { DiscoveryPayload } from "./discovery-graph";
 
 export default class ConnectedPapersPlugin extends Plugin {
 	settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS };
@@ -59,10 +58,8 @@ export default class ConnectedPapersPlugin extends Plugin {
 			return true;
 		} });
 		this.registerDomEvent(window, "research-connected-open-discovery", event => {
-			const detail = event.detail;
-			if (!detail) return;
-			detail.handled = true;
-			void this.openDiscovery(detail.payload, detail.paper, detail.question, detail.mode).catch(error => new Notice(error instanceof Error ? error.message : "Could not open related papers"));
+			const detail = event.detail ?? {};
+			void this.openDiscovery(detail.paper, detail.question, detail.mode).catch(error => new Notice(error instanceof Error ? error.message : "Could not open related papers"));
 		});
 
 		addIcon(LOGO_ICON, LOGO_SVG);
@@ -122,10 +119,10 @@ export default class ConnectedPapersPlugin extends Plugin {
 		return this.settings;
 	}
 
-	private async openDiscovery(payload?: DiscoveryPayload, paper?: string, question?: string, mode?: "rank" | "search"): Promise<void> {
+	private async openDiscovery(paper?: string, question?: string, mode?: "rank" | "search"): Promise<void> {
 		await this.openView();
 		const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
-		if (view instanceof ConnectedPapersView) view.openDiscovery({ payload, paper, question, mode });
+		if (view instanceof ConnectedPapersView) view.openDiscovery({ paper, question, mode });
 		for (const leaf of this.app.workspace.getLeavesOfType(DISCOVERY_VIEW)) leaf.detach();
 	}
 

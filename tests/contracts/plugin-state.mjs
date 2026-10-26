@@ -84,9 +84,9 @@ function renderSettings() {
 }
 renderSettings();
 assert.deepEqual(helpLinks.map(({ tag, text, href, attr }) => [tag, text, href, attr]), [
-	["a", "User guide", "https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md", { target: "_blank", rel: "noopener noreferrer" }],
-	["a", "Report a bug", "https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml", { target: "_blank", rel: "noopener noreferrer" }],
-	["a", "Request a feature", "https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml", { target: "_blank", rel: "noopener noreferrer" }],
+	["a", "User guide", "https://github.com/WolfExplode/research-connected/blob/main/docs/USER_GUIDE.md", { target: "_blank", rel: "noopener noreferrer" }],
+	["a", "Report a bug", "https://github.com/WolfExplode/research-connected/issues/new?template=bug_report.yml", { target: "_blank", rel: "noopener noreferrer" }],
+	["a", "Request a feature", "https://github.com/WolfExplode/research-connected/issues/new?template=feature_request.yml", { target: "_blank", rel: "noopener noreferrer" }],
 ]);
 assert.equal(controls.size, 21, "all non-LLM settings must remain available");
 assert.equal(controls.get("OpenAlex API key").inputEl.type, "password");

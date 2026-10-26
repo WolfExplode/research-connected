@@ -2,7 +2,7 @@ import { mountGraphApp } from "../../src/app";
 import { normalizeDoi } from "../../src/paper";
 import { DEFAULT_SETTINGS, type ConnectedPapersSettings } from "../../src/settings-model";
 import { fixtureGet } from "../../preview/fixture";
-import type { LibraryBridge } from "../../src/library-bridge";
+import type { PaperLibraryService } from "../../src/library-panel";
 import type { GetJson } from "../../src/openalex";
 
 export async function verifyDoiRecoveryBrowser(root: HTMLElement): Promise<void> {
@@ -22,12 +22,12 @@ export async function verifyDoiRecoveryBrowser(root: HTMLElement): Promise<void>
 		const response = await fixtureGet(url, init) as Record<string, unknown>;
 		return response.id === "https://openalex.org/W1" ? { ...response, doi: null, display_name: title } : response;
 	};
-	const bridge: LibraryBridge = { version: 1,
+	const bridge: PaperLibraryService = {
 		read: paper => ({ doi: normalizeDoi(paper.doiUrl), local: { state: "absent", note: null, files: [] }, providers: {} }),
 		check: async paper => { checks++; return { ...bridge.read(paper), providers: { oa: { state: "not-found" } } }; }, open() {},
 	};
 	const mount = () => mountGraphApp(root, { getSettings: () => settings, getJson, openExternal() {}, initialTarget: { kind: "openalex", value: "W1" },
-		libraryBridge: () => bridge, persistSettings: async () => { if (failSave) throw new Error("disk full"); } });
+		researchLibrary: () => bridge, persistSettings: async () => { if (failSave) throw new Error("disk full"); } });
 	const find = () => Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === "Find DOI");
 	let app = mount();
 	await until(() => Boolean(find()));

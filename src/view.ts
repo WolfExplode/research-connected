@@ -8,13 +8,13 @@ import { openExternal } from "./open-external";
 import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
 import type { ResearchProject } from "./project-state";
-import type { LibraryBridge } from "./library-bridge";
+import type { PaperLibraryService } from "./library-panel";
 
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
 	saveSettings(notify?: boolean): Promise<void>;
 	migrateBookmarks?(): Promise<void>;
-	researchLibrary?(): LibraryBridge | null;
+	researchLibrary?(): PaperLibraryService | null;
 }
 
 export class ConnectedPapersView extends ItemView {
@@ -70,7 +70,7 @@ export class ConnectedPapersView extends ItemView {
 		if (header && headerStatus && actions) header.insertBefore(headerStatus, actions);
 		this.headerStatus = headerStatus ?? null;
 		this.appHandle = mountGraphApp(this.contentEl, {
-			libraryBridge: () => this.host.researchLibrary?.() ?? null,
+			researchLibrary: () => this.host.researchLibrary?.() ?? null,
 			getSettings: () => this.host.getSettings(),
 			persistSettings: () => this.host.saveSettings(false),
 			getJson: obsidianGetJson,

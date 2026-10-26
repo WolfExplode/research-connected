@@ -1,6 +1,6 @@
 import { TFile, type App } from "obsidian";
 import { tr } from "./i18n";
-import type { LibraryAvailability, LibraryBridge } from "./library-bridge";
+import type { LibraryAvailability, PaperLibraryService } from "./library-panel";
 import { lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote } from "./vault-note";
 import { paperDois } from "./work-identity";
 import type { ConnectedPapersSettings } from "./settings-model";
@@ -18,7 +18,7 @@ const noTools = (): string => tr("保存和收藏需要研究工具。请在 Res
 export function invalidatePaperLibrary(app: App, path?: string): void { libraries.get(app)?.invalidate(path); }
 
 /** One shared adapter per vault, so panes/embeds cannot create duplicate notes or race toggles. */
-export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSettings, bridge: () => LibraryBridge | null): PaperLibrary {
+export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSettings, bridge: () => PaperLibraryService | null): PaperLibrary {
 	const existing = libraries.get(app); if (existing) return existing.library;
 	const confirmed = new Map<string, { paper: PaperNode; state: LibraryPaperState }>();
 	const errors = new Map<string, string>();

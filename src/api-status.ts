@@ -1,9 +1,9 @@
 import { tr } from "./i18n";
 import type { SimilarityGraph } from "./neighborhood";
-import type { LibraryBridge } from "./library-bridge";
+import type { PaperLibraryService } from "./library-panel";
 
 /** Report known limitations; an absent error is not proof every provider was queried. */
-export function graphApiStatus(graph: SimilarityGraph | null, bridge: LibraryBridge | null | undefined, libraryError: string, citationsIncomplete: boolean): string[] {
+export function graphApiStatus(graph: SimilarityGraph | null, bridge: PaperLibraryService | null | undefined, libraryError: string, citationsIncomplete: boolean): string[] {
 	const messages: string[] = [];
 	const labels: Record<string, string> = {
 		references: "OpenAlex references", citations: "OpenAlex citations", related: "OpenAlex related works",

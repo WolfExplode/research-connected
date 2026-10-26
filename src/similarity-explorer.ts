@@ -2,7 +2,7 @@ import { literatureQuery } from "./workflow/literature-search";
 import { createCountControl } from "./count-control";
 import type { InfoMessage } from "./info-bar";
 import { tr } from "./i18n";
-import { paintLibraryAvailability, type LibraryBridge, type DoiRecoveryAction } from "./library-bridge";
+import { paintLibraryAvailability, type PaperLibraryService, type DoiRecoveryAction } from "./library-panel";
 import { paintAbstractCard, paintComparisonCard, paintMetadataCard } from "./detail-cards";
 import type { SimilarityGraph } from "./neighborhood";
 import { comparisonData, type SimilarityKind, type StoredTextEvidence } from "./paper-comparison";
@@ -11,7 +11,7 @@ import type { PaperNode } from "./types";
 import type { CitationComparisonResult } from "./workflow/comparison-citations";
 
 /** Transient search UI: never writes library files or replaces a saved citation graph. */
-export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => LibraryBridge | null,
+export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => PaperLibraryService | null,
 	onChange: () => void, onNeighbors: (paper: PaperNode) => Promise<boolean> | void,
 	onNeighborActionChange?: () => void,
 	loadCitations?: (graph: SimilarityGraph) => Promise<CitationComparisonResult>,
@@ -111,7 +111,6 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => Librar
 		get apiError() { return active ? [scope.value !== "external" ? error : "", scope.value !== "library" ? remoteError : ""].filter(Boolean).join("; ") : ""; },
 		get result() { return active ? result : null; },
 		invalidate,
-		seedLibrary(rows: LibraryTextPaper[]): void { library = rows; scope.value = "library"; last = null; },
 		refresh(): void { refreshRemote = true; remoteKey = ""; invalidate(); changed(); },
 		setScope(value: SearchScope): void { scope.value = value; changed(); },
 		setCenter(paper: PaperNode): void { center = paper; changed(); },

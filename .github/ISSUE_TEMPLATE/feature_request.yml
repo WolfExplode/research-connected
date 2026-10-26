@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        English or Chinese is welcome. Please [check existing requests](https://github.com/Abe-Junwei/research-connected/issues) first.
+        English or Chinese is welcome. Please [check existing requests](https://github.com/WolfExplode/research-connected/issues) first.
         Suggestions are public and do not guarantee implementation or a delivery date. Do not include private notes or unpublished research.
         支持中文。建议公开可见，不代表承诺开发或交付时间，请勿附上私人笔记或未公开研究材料。
   - type: textarea

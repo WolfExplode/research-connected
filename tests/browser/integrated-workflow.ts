@@ -21,7 +21,7 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 		getJson: async () => { networkCalls++; throw new Error("Unexpected network request"); },
 		openExternal() {}, persistSettings: async () => {},
 		saveProject: project => { settings.researchProjects[project.seedId] = project; },
-		libraryBridge: () => ({ version: 1, read: () => ({ doi: null, local: { state: "note-only", note: "Research/Papers/Result.md", files: [] }, providers: {} }), check: async () => { throw new Error("Unexpected provider request"); }, open() {}, discovery: {
+		researchLibrary: () => ({ read: () => ({ doi: null, local: { state: "note-only", note: "Research/Papers/Result.md", files: [] }, providers: {} }), check: async () => { throw new Error("Unexpected provider request"); }, open() {}, discovery: {
 			context: () => ({ questions: [{ path: first, title: "First" }, { path: second, title: "Second" }], papers: [] }),
 			run: request => new Promise(resolve => requests.push({ request: structuredClone(request), resolve })),
 		} }),
@@ -71,15 +71,6 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 		check(root.querySelector<HTMLSelectElement>(".cpo-project-group:not(.cpo-question-group) > .cpo-project-select:not(.cpo-view-select)")!.value === "W1", "returning to citation mode must restore its graph");
 		check(JSON.stringify(settings.researchProjects.W1!.snapshot?.nodes) === JSON.stringify(snapshot.nodes), "local results must never overwrite the citation snapshot");
 		check(networkCalls === 0, "local mode switches must not fetch citation data");
-		handle.openDiscovery({ payload: { engine: "asreview", mode: "similar", scoring: "specter2+words-v1",
-			source: { title: "Comparison source", note: "Research/Papers/Source.md" },
-			papers: [{ title: "Semantic neighbor", note: "Research/Papers/Neighbor.md", similarity: 62.5,
-				text_comparison: { score: 0.625, method: "specter2+words", lexical: 0.25, embedding: 0.75 } }] } });
-		root.querySelector<HTMLButtonElement>('[data-layout="radial"]')!.click();
-		check(!root.querySelector<HTMLButtonElement>('[data-similarity="citations"]')?.disabled, "local papers can remain visible in Citations with unavailable evidence");
-		check(root.querySelector(".cpo-detail")?.textContent?.includes("SPECTER2") && root.querySelector(".cpo-detail")?.textContent?.includes("0.56"), `local details expose the actual SPECTER2 scoring method and decimal score: ${root.querySelector(".cpo-detail")?.textContent}`);
-		root.querySelector<HTMLButtonElement>('[data-similarity="citations"]')!.click();
-		check(root.querySelector(".cpo-comparison-card .cpo-meter-na")?.textContent === "Unavailable" && !root.querySelector(".cpo-comparison-card .cpo-meter-value"), "membership edges never become citation similarity claims");
 		mode("rank"); run(); handle.destroy(); requests[4]!.resolve(payload(first, "Result after disposal")); await tick();
 		check(root.childElementCount === 0, "disposed workspaces must ignore late results");
 		return "PASS: shared canvas and question, ranking and PDF details, scoped indexing, session reuse, stale-result guards, citation preservation, cleanup";

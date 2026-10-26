@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: User guide / 使用指南
-    url: https://github.com/Abe-Junwei/research-connected/blob/main/docs/USER_GUIDE.md
+    url: https://github.com/WolfExplode/research-connected/blob/main/docs/USER_GUIDE.md
     about: Setup, sampling, note embeds, data quality, and troubleshooting.
   - name: Existing issues / 已有问题与建议
-    url: https://github.com/Abe-Junwei/research-connected/issues
+    url: https://github.com/WolfExplode/research-connected/issues
     about: Search existing reports before opening a new one. 提交前先查看是否已有相关反馈。

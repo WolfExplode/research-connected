@@ -4,7 +4,7 @@ import { mountEmbed } from "./embed-mount";
 import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import type { ConnectedPapersSettings } from "./settings-model";
-import type { LibraryBridge } from "./library-bridge";
+import type { PaperLibraryService } from "./library-panel";
 import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 
 interface EmbedHost extends Plugin {
@@ -12,7 +12,7 @@ interface EmbedHost extends Plugin {
 	saveSettings(notify?: boolean): Promise<void>;
 	/** Open the full graph pane focused on a seed; absent in hosts that cannot. */
 	openGraph?(target: { kind: "doi" | "openalex"; value: string }): void;
-	researchLibrary?(): LibraryBridge | null;
+	researchLibrary?(): PaperLibraryService | null;
 }
 
 /**
@@ -51,7 +51,7 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 			postJson: obsidianPostJson,
 			openExternal,
 			paperLibrary: vaultPaperLibrary(plugin.app, () => plugin.getSettings(), () => plugin.researchLibrary?.() ?? null),
-			libraryBridge: () => plugin.researchLibrary?.() ?? null,
+			researchLibrary: () => plugin.researchLibrary?.() ?? null,
 			stagePaper: async () => { await plugin.saveSettings(false); },
 			createNote: (filename, markdown, folder) => createVaultNote(plugin.app, filename, markdown, folder),
 			lookupLiteratureNote: (paper) => lookupLiteratureNote(plugin.app, paper, plugin.getSettings().literatureDoiProperty),

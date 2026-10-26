@@ -2,7 +2,8 @@
 
 Research Connected is a desktop Obsidian plugin built from TypeScript into one CommonJS bundle.
 The pane and Markdown embed share rendering and paper behavior while keeping their host mounting
-and sizing separate. There is no separate backend owned by this plugin.
+and sizing separate. Its paper library runs on the research repository's CLI as child processes
+(see [research tools](../RESEARCH_TOOLS.md)); the citation graph needs no backend.
 
 ## Modules and responsibilities
 
@@ -21,7 +22,7 @@ and sizing separate. There is no separate backend owned by this plugin.
 | Scholarly source adapters | src/openalex.ts, src/citation-sources.ts, src/obsidian-http.ts |
 | Per-service request lanes and shared rate-limit pauses | src/provider-limits.ts, src/provider-pause-file.ts |
 | Vault-owned paper actions and bookmark migration | src/paper-library.ts, src/vault-paper-library.ts, src/workflow/bookmark-migration.ts |
-| Literature notes and the graph's library interface | src/vault-note.ts, src/library-bridge.ts |
+| Literature notes and the graph's library interface and panel | src/vault-note.ts, src/library-panel.ts |
 | Paper library over the research CLI (holdings, availability, Save, Bookmark, SPECTER2, discovery, labels) | src/research-library.ts, src/research-tools.ts, src/open-access-queue.ts, src/availability-policy.ts, src/fetched-evidence.ts, src/paper-labels.ts |
 | Question-scoped discovery | src/question-workspace.ts, src/discovery-graph.ts |
 | Optional research narrative | src/narrative.ts, src/llm.ts |
@@ -67,8 +68,8 @@ The explorer coordinates pending/error/empty state, optional local text enrichme
 guards. Pane and embed mounting choose an explicit task independently of the layout. Similarity
 source graphs and results are transient; citation sessions and saved snapshots remain separate.
 
-ResearchLibrary supplies local holdings, text evidence, and discovery through the LibraryBridge
-interface. It runs the research repository's CLI and availability worker as child processes
+ResearchLibrary supplies local holdings, text evidence, and discovery through the
+PaperLibraryService interface. It runs the research repository's CLI and availability worker as child processes
 (src/research-tools.ts) and never loads repository modules. Without a configured research
 repository it is absent and citation exploration still works. Retrieval UI distinguishes pending,
 failed, empty, and ready results and exposes retry and compared/displayed counts.
@@ -119,7 +120,7 @@ Scholar, Crossref, OpenCitations, Europe PMC), shared by panes, embeds and clien
   is desktop-only.
 
 PaperLibrary is the shared paper-action interface. The Obsidian adapter finds or creates notes,
-reads the vault-wide bookmark flag, delegates acquisition to the optional bridge, and shares
+reads the vault-wide bookmark flag, delegates note writes and acquisition to ResearchLibrary, and shares
 in-flight mutations across surfaces. The note remains authoritative; confirmed-write caches cover
 Obsidian metadata-index delay and are invalidated on note changes. The companion library writer
 owns source naming, sidecars, file validation, and acquisition outcomes. Project `staged` flags are

@@ -8,7 +8,7 @@ import { orbitPosition, placeLayout, radialDistanceScores, similarityRadius, typ
 import { RELATION_COLOR, relationKind, type RelationKind } from "./relation";
 import { topicSimilarity, topicSimilarityColor } from "./topic-similarity";
 import type { GraphEdge, PaperNode } from "./types";
-import type { LibraryAvailability } from "./library-bridge";
+import type { LibraryAvailability } from "./library-panel";
 import { citationRadius, clamp, classicBreath, fitViewScale, yearColor, yearNormalizedCitations } from "./visual";
 
 interface DrawNode extends PaperNode {

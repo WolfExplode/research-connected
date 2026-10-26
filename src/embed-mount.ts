@@ -11,7 +11,7 @@ import { isChinese, tr } from "./i18n";
 import { mountSimilarityExplorer } from "./similarity-explorer";
 import { comparisonData, type SimilarityKind, type StoredTextEvidence, type TextComparison } from "./paper-comparison";
 import { paintComparisonCard } from "./detail-cards";
-import { paintLocalPaperAction, type LibraryBridge } from "./library-bridge";
+import { paintLocalPaperAction, type PaperLibraryService } from "./library-panel";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
@@ -45,7 +45,7 @@ export interface EmbedDeps {
 	openExternal: (url: string) => void;
 	paperLibrary?: PaperLibrary;
 	/** Holdings, availability and stored text from the research tools; null when none are configured. */
-	libraryBridge?: () => LibraryBridge | null;
+	researchLibrary?: () => PaperLibraryService | null;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
 	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
@@ -75,7 +75,7 @@ const viewStates = new Map<string, EmbedViewState>();
 
 /** Reading view and Live Preview share this DOM. It does not import Obsidian. */
 export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
-	const library = (): LibraryBridge | null => deps.libraryBridge?.() ?? null;
+	const library = (): PaperLibraryService | null => deps.researchLibrary?.() ?? null;
 	const saveReading = (paper: PaperNode, seedId: string, reading: ReadingStatus, previous: ReadingStatus, source: string): Promise<void> =>
 		saveReadingState({ projects: deps.getSettings().researchProjects, seedId, paper, reading, previous,
 			persist: () => deps.stagePaper?.(paper, seedId, source), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {

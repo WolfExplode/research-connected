@@ -4,7 +4,7 @@ import type { FetchedEvidence, FetchedVector } from "./fetched-evidence";
 import { normalizeDoi } from "./paper";
 import { paperDois } from "./work-identity";
 import type { DiscoveryPayload, DiscoveryRequest } from "./discovery-graph";
-import type { LibraryAvailability, LibraryBridge } from "./library-bridge";
+import type { LibraryAvailability, PaperLibraryService } from "./library-panel";
 import type { StoredTextEvidence } from "./paper-comparison";
 import type { CliResponse, ProviderRecord, ResearchTools } from "./research-tools";
 import type { PaperNode } from "./types";
@@ -58,9 +58,8 @@ interface HoldingsIndex { doi: Map<string, Holding[]>; openalex: Map<string, Hol
 const FINGERPRINT = ["type", "title", "year", "doi", "openalex", "pdf", "fulltext", "full_text", "bookmark", "favorite", "reading_status", "needs_reason"];
 const fingerprint = (props: Record<string, unknown> | null): string => JSON.stringify(FINGERPRINT.map(key => props?.[key] ?? null));
 
-export class ResearchLibrary implements LibraryBridge {
-	readonly version = 1 as const;
-	readonly discovery: NonNullable<LibraryBridge["discovery"]>;
+export class ResearchLibrary implements PaperLibraryService {
+	readonly discovery: NonNullable<PaperLibraryService["discovery"]>;
 	private index: HoldingsIndex | null = null;
 	private readonly fingerprints = new Map<string, string>();
 	private readonly results: AvailabilityResults = new Map();
@@ -83,6 +82,7 @@ export class ResearchLibrary implements LibraryBridge {
 	private readonly fetchedWorks = new Map<string, Record<string, unknown>>();
 	private fetchedTimer: number | null = null;
 	private closed = false;
+	private textLibraryLoad: Promise<Array<{ paper: PaperNode; note: string; vector?: number[] }>> | null = null;
 
 	constructor(private readonly host: LibraryHost, private readonly tools: ResearchTools, private readonly settings: () => ResearchLibrarySettings, private readonly now = Date.now) {
 		this.oa = createOpenAccessQueue({ worker: () => tools.worker(), results: this.results, notify: () => this.changed(), enabled: () => settings().autoOpenAccess, now });
@@ -398,7 +398,13 @@ export class ResearchLibrary implements LibraryBridge {
 		return rows.filter((row): row is StoredTextEvidence => !!row);
 	}
 
-	async textLibrary(): Promise<Array<{ paper: PaperNode; note: string; vector?: number[] }>> {
+	/** Panes and embeds that ask while a load is running share it; each finished load starts fresh. */
+	textLibrary(): Promise<Array<{ paper: PaperNode; note: string; vector?: number[] }>> {
+		if (!this.textLibraryLoad) this.textLibraryLoad = this.loadTextLibrary().finally(() => { this.textLibraryLoad = null; });
+		return this.textLibraryLoad;
+	}
+
+	private async loadTextLibrary(): Promise<Array<{ paper: PaperNode; note: string; vector?: number[] }>> {
 		const rows = this.host.files().filter(file => file.extension === "md" && file.path.startsWith(PAPERS) && this.host.frontmatter(file.path)?.type === "source").map((file): { note: string; paper: PaperNode; vector?: number[] } => {
 			const props = this.host.frontmatter(file.path) ?? {};
 			const doi = propDoi(props.doi), openalex = openAlexId(props.openalex);
