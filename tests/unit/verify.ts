@@ -90,7 +90,7 @@ function unit(): void {
 	const project: ResearchProject = {
 		version: 1, seedId: "W1", name: "Saved", updatedAt: 1, views: [],
 		snapshot: {
-			version: 1, savedAt: 1, seedId: "W1", nodes: [savedSeed], edges: [], seedScore: [], warnings: [],
+			version: 2, savedAt: 1, seedId: "W1", nodes: [savedSeed], edges: [], seedScore: [], warnings: [],
 			strategies: { references: true, citations: true, related: true }, referenceLists: [], catalog: [savedSeed],
 			citationEvidence: [], skippedNonResearch: 0,
 		},

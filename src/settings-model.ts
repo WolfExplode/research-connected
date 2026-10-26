@@ -1,4 +1,3 @@
-import type { StagedPaper } from "./staging";
 import type { ResearchProject } from "./project-state";
 import type { DoiRecovery } from "./doi-recovery";
 export type SampleDepth = "standard" | "extended" | "deep";
@@ -42,11 +41,6 @@ export interface ConnectedPapersSettings {
 	autoOpenAccess: boolean;
 	/** Fetch missing SPECTER2 embeddings when graphs or library similarity load. */
 	autoSpecter2: boolean;
-	/** Research Vault's tool settings were copied once; later edits there are not read. */
-	researchToolsImported?: boolean;
-	stagedPapers: StagedPaper[];
-	/** Deep-dug paper ids kept per seed OpenAlex id, restored on rebuild. */
-	graftedBySeed: Record<string, string[]>;
 	researchProjects: Record<string, ResearchProject>;
 	activeQuestion?: string;
 	/** Verified DOI metadata and one-day negative lookup cache, keyed by bibliography. */
@@ -80,7 +74,5 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	researchNode: "node",
 	autoOpenAccess: true,
 	autoSpecter2: true,
-	stagedPapers: [],
-	graftedBySeed: {},
 	researchProjects: {},
 };

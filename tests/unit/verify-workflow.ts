@@ -13,13 +13,13 @@ export async function verifyWorkflow(): Promise<void> {
 	const change = { projects, seedId: paper.id, paper, reading: "read" as const, previous: "unread" as const,
 		persist: (): void => { writes++; if (failPersist) throw new Error("disk full"); disk = projects.W1!.paperStates!.W1!.reading; } };
 	await assert.rejects(saveReadingState({ ...change, syncNote: async () => {
-		projects.W1!.paperStates!.W1!.staged = true;
+		projects.W1!.paperStates!.W1!.source = "Edited elsewhere";
 		throw new Error("ambiguous note");
 	} }), ReadingSaveError);
 	assert.equal(writes, 2, "a failed note sync must persist its compensation");
 	assert.equal(disk, "unread");
 	assert.equal(projects.W1!.paperStates!.W1!.reading, "unread");
-	assert.equal(projects.W1!.paperStates!.W1!.staged, true, "rollback must retain unrelated state edits");
+	assert.equal(projects.W1!.paperStates!.W1!.source, "Edited elsewhere", "rollback must retain unrelated state edits");
 	failPersist = true;
 	await assert.rejects(saveReadingState(change), ReadingSaveError);
 	assert.equal(projects.W1!.paperStates!.W1!.reading, "unread");

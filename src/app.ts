@@ -3,7 +3,7 @@ import { createLiteratureSearch } from "./workflow/literature-search";
 import { createCountControl } from "./count-control";
 import { createInfoBar, graphInfo } from "./info-bar";
 import { setHoverHint } from "./hover-hint";
-import { ReadingSaveError, readingChangePending, readingChangesPending, saveReadingState } from "./workflow/reading-state";
+import { readingChangePending, readingChangesPending, saveReadingState } from "./workflow/reading-state";
 import { createProjectSave } from "./workflow/project-save";
 import { createComparisonCitations } from "./workflow/comparison-citations";
 import { graphApiStatus } from "./api-status";
@@ -68,8 +68,7 @@ import type { GraphEdge, PaperNode, SearchHit } from "./types";
 import { formatCount } from "./visual";
 import { mountSidebarResize } from "./sidebar-resize";
 import { observeResponsiveMode } from "./responsive";
-import { displayStageSource, groupStagedBySeed } from "./staging";
-import { matchingSeedProjects, projectExcludedPapers, projectStagedPapers, acknowledgeIdentityStates, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
+import { matchingSeedProjects, projectExcludedPapers, acknowledgeIdentityStates, reconcileProjectIdentity, restoreGraphSnapshot, savedProjectForSeed, saveGraphSnapshot, updateProjectPaperState, type DeepDiveBatch, type ProjectPaperState, type ReadingStatus, type ResearchProject, type SavedView } from "./project-state";
 
 export interface GraphAppHandle {
 	destroy(): void;
@@ -90,8 +89,6 @@ export interface AppDeps {
 	syncLiteratureReading?: (paper: PaperNode, reading: ReadingStatus) => Promise<void>;
 	rememberLiteratureNote?: (paper: PaperNode, path: string, reading: ReadingStatus) => void;
 	paperLibrary?: PaperLibrary;
-	retryBookmarkMigration?: () => Promise<void>;
-	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	/** Persist settings (grafted members, staging, …). */
 	persistSettings?: () => Promise<void> | void;
 	loadSavedProject?: () => ResearchProject | null;
@@ -114,7 +111,7 @@ const STAGE_TEXT: Record<"resolving" | "fetching" | "scoring" | "searching", str
 export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle {
 	const saveReading = (paper: PaperNode, seedId: string, reading: ReadingStatus, previous: ReadingStatus, source: string): Promise<void> =>
 		saveReadingState({ projects: deps.getSettings().researchProjects, seedId, paper, reading, previous,
-			persist: () => deps.persistSettings ? deps.persistSettings() : deps.stagePaper?.(paper, seedId, source), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
+			persist: () => deps.persistSettings?.(), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
 			infoBar.notify(error instanceof Error ? error.message : tr("阅读状态保存失败", "Could not save reading status"), "error");
 			throw error;
 		});
@@ -498,7 +495,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		prior: tr("先验工作", "Prior works"),
 		derivative: tr("衍生工作", "Derivative works"),
 		research: tr("研究脉络", "Research narrative"),
-		staged: tr("收藏", "Bookmarks"),
+		bookmarks: tr("收藏", "Bookmarks"),
 		excluded: tr("已排除论文", "Excluded papers"),
 	};
 
@@ -506,15 +503,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		syncInfoBar();
 		releaseLibraryMenu?.(); releaseLibraryMenu = undefined;
 		evidenceHeading.textContent = exploreMode !== "citation" && tab === "graph" ? tr("论文详情与检索结果", "Paper details & results") : tabTitles[tab] ?? tabTitles.graph;
-		libraryButton.setAttribute("aria-pressed", tab === "staged" || tab === "excluded" ? "true" : "false");
+		libraryButton.setAttribute("aria-pressed", tab === "bookmarks" || tab === "excluded" ? "true" : "false");
 		sheetHost.classList.toggle("cpo-sheet-analysis", tab === "research");
 		detail.hidden = tab !== "graph";
 		if (tab === "research") {
 			paintResearch();
 			return;
 		}
-		if (tab === "staged") {
-			paintStaged();
+		if (tab === "bookmarks") {
+			paintBookmarks();
 			return;
 		}
 		if (tab === "excluded") {
@@ -553,7 +550,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			}, (card, paper) => {
 				if (!seed) return;
 				const settings = deps.getSettings();
-				const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+				const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 				paintPaperWorkflowState(card, paper, state, (reading, previous) => saveReading(paper, seed.id, reading, previous, state.source), () => {
 					if (graph?.nodes.some((node) => node.id === paper.id)) removePaper(paper);
 					else if (graph) {
@@ -564,13 +561,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 						paintLists();
 					}
 				});
-				paintPaperActions(card, paper, seed.id, null, null, {
-					library: deps.paperLibrary,
-					getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
-					setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
-					persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
-					openExternal: deps.openExternal,
-				});
+				paintPaperActions(card, paper, { library: deps.paperLibrary, openExternal: deps.openExternal });
 			});
 		}
 		listPanel.append(list);
@@ -578,7 +569,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const paintLibrarySwitch = (parent: HTMLElement): void => {
 		const row = el(parent, "div", "cpo-library-switch");
-		for (const [next, label] of [["staged", tr("收藏", "Bookmarks")], ["excluded", tr("排除", "Excluded")]] as const) {
+		for (const [next, label] of [["bookmarks", tr("收藏", "Bookmarks")], ["excluded", tr("排除", "Excluded")]] as const) {
 			const button = el(row, "button", "cpo-library-switch-item", label);
 			button.type = "button";
 			button.setAttribute("aria-pressed", tab === next ? "true" : "false");
@@ -610,7 +601,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		actions(actionRow);
 	};
 
-	const paintStaged = (): void => {
+	const paintBookmarks = (): void => {
 		releaseLibraryMenu?.(); releaseLibraryMenu = undefined;
 		listPanel.hidden = false;
 		listPanel.replaceChildren();
@@ -618,21 +609,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const libraryHeader = el(listPanel, "div", "cpo-library-header");
 		const libraryHeading = el(libraryHeader, "div", "cpo-library-heading");
 		el(libraryHeading, "h3", "cpo-kicker", tr("收藏", "Bookmarks"));
-		const projects = deps.getSettings().researchProjects ?? {};
-		const bookmarks = deps.paperLibrary?.bookmarks();
-		const pendingLegacy = bookmarks ? projectStagedPapers(projects) : [];
-		if (pendingLegacy.length) {
-			const pending = el(listPanel, "details", "cpo-legacy-bookmarks");
-			el(pending, "summary", "cpo-fact-note", tr(`${pendingLegacy.length} 条旧收藏待迁移`, `${pendingLegacy.length} legacy bookmarks awaiting migration`));
-			for (const item of pendingLegacy) el(pending, "p", "cpo-fact-note", item.paper.title);
-			if (deps.retryBookmarkMigration) {
-				const retry = el(pending, "button", "cpo-paper-action", tr("重试迁移", "Retry migration")); retry.type = "button";
-				retry.onclick = async () => { retry.disabled = true; try { await deps.retryBookmarkMigration?.(); paintStaged(); } catch (error) { infoBar.notify(error instanceof Error ? error.message : "Bookmark migration failed", "error"); } finally { retry.disabled = false; } };
-			}
-		}
-		const items = bookmarks ? bookmarks.map(item => ({ seedId: "vault", paper: item.paper, source: "Library bookmark", reading: item.reading, addedAt: "", read: item.reading === "read" })) : projectStagedPapers(projects);
-		el(libraryHeading, "span", "cpo-library-count", tr(`${items.length} 篇`, `${items.length} papers`));
-		if (items.length === 0) { el(listPanel, "p", "cpo-agg-empty", tr("还没有收藏论文。", "No bookmarked papers yet.")); return; }
+		const library = deps.paperLibrary;
+		if (!library) { el(listPanel, "p", "cpo-agg-empty", tr("收藏需要研究工具。请在 Research Connected 设置中配置研究工具仓库。", "Bookmarks need the research tools. Set the research tools repository in Research Connected settings.")); return; }
+		const bookmarks = library.bookmarks();
+		el(libraryHeading, "span", "cpo-library-count", tr(`${bookmarks.length} 篇`, `${bookmarks.length} papers`));
+		if (bookmarks.length === 0) { el(listPanel, "p", "cpo-agg-empty", tr("还没有收藏论文。", "No bookmarked papers yet.")); return; }
 		const actionMenu = el(libraryHeader, "details", "cpo-library-menu");
 		const actionTrigger = el(actionMenu, "summary", "cpo-ghost cpo-library-menu-trigger");
 		actionTrigger.setAttribute("aria-label", tr("清单操作", "List actions"));
@@ -643,14 +624,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		copyTable.prepend(createChromeIcon("table"));
 		copyTable.type = "button";
 		copyTable.onclick = () => {
-			const text = toMarkdownTable(orderedForExport(items.map((item) => item.paper)));
+			const text = toMarkdownTable(orderedForExport(bookmarks.map((item) => item.paper)));
 			void chrome?.copyText(text, tr("表格", "Table"));
 		};
 		const copyBib = el(actionItems, "button", "cpo-library-menu-item", tr("复制 BibTeX", "Copy BibTeX"));
 		copyBib.prepend(createChromeIcon("copy"));
 		copyBib.type = "button";
 		copyBib.onclick = () => {
-			const text = toBibTeX(orderedForExport(items.map((item) => item.paper)));
+			const text = toBibTeX(orderedForExport(bookmarks.map((item) => item.paper)));
 			void chrome?.copyText(text, "BibTeX");
 		};
 		if (deps.createNote) {
@@ -661,15 +642,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			noteBtn.type = "button";
 			noteBtn.onclick = () => {
 				const lines = [tr("# 收藏论文", "# Bookmarks"), ""];
-				for (const group of groupStagedBySeed(items)) {
-					if (!bookmarks) lines.push(tr(`## 种子 ${group.seedId}`, `## Seed ${group.seedId}`), "");
-					for (const item of group.items) {
-						lines.push(tr(`- ${item.paper.title || item.paper.id}（${item.paper.year ?? tr("年份不详", "Year unknown")}）· ${displayStageSource(item.source)} · ${item.reading === "read" ? tr("已读", "Read") : item.reading === "to-read" ? tr("待读", "To read") : tr("未读", "Unread")}`, `- ${item.paper.title || item.paper.id} (${item.paper.year ?? tr("年份不详", "Year unknown")}) · ${displayStageSource(item.source)} · ${item.reading === "read" ? tr("已读", "Read") : item.reading === "to-read" ? tr("待读", "To read") : tr("未读", "Unread")}`));
-						if (item.paper.doiUrl) lines.push(`  - DOI: ${item.paper.doiUrl}`);
-						lines.push(`  - ${item.paper.openAlexUrl}`);
-					}
-					lines.push("");
+				for (const item of bookmarks) {
+					const reading = item.reading === "read" ? tr("已读", "Read") : item.reading === "to-read" ? tr("待读", "To read") : tr("未读", "Unread");
+					lines.push(tr(`- ${item.paper.title || item.paper.id}（${item.paper.year ?? "年份不详"}）· ${reading}`, `- ${item.paper.title || item.paper.id} (${item.paper.year ?? "Year unknown"}) · ${reading}`));
+					if (item.paper.doiUrl) lines.push(`  - DOI: ${item.paper.doiUrl}`);
+					lines.push(`  - ${item.paper.openAlexUrl}`);
 				}
+				lines.push("");
 				void deps.createNote!(tr("收藏论文.md", "Bookmarks.md"), lines.join("\n")).then(() => {
 					chrome?.setExportText(tr("已写入笔记：收藏论文.md", "Written to note: Bookmarks.md"));
 				}).catch((error) => {
@@ -677,53 +656,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				});
 			};
 		}
-		if (bookmarks && deps.paperLibrary) {
-			const library = deps.paperLibrary, list = el(listPanel, "ol", "cpo-agg-list");
-			for (const entry of bookmarks) paintLibraryCard(list, entry.paper, "", actions => {
-				paintPaperActions(actions, entry.paper, null, null, null, { library, getPaperState: () => undefined, setStaged: () => {}, openExternal: deps.openExternal });
-			});
-			return;
-		}
-		for (const group of groupStagedBySeed(items)) {
-			const seedTitle = graph?.nodes.find((node) => node.id === group.seedId)?.title;
-			el(listPanel, "h4", "cpo-kicker cpo-staged-group-title", seedTitle ? tr(`种子 · ${seedTitle}`, `Seed · ${seedTitle}`) : tr(`种子 · ${group.seedId}`, `Seed · ${group.seedId}`));
-			const list = el(listPanel, "ol", "cpo-agg-list");
-			for (const item of group.items) {
-				paintLibraryCard(list, item.paper, displayStageSource(item.source), (actions) => {
-					const open = el(actions, "button", "cpo-library-action", tr("查看", "View"));
-					open.type = "button";
-					open.onclick = () => openSavedPaper(item.seedId, item.paper);
-					const reading = el(actions, "select", "cpo-paper-reading-select");
-					reading.setAttribute("aria-label", tr(`阅读状态：${item.paper.title || item.paper.id}`, `Reading status: ${item.paper.title || item.paper.id}`));
-					for (const [value, label] of [["unread", tr("未读", "Unread")], ["to-read", tr("待读", "To read")], ["read", tr("已读", "Read")]] as const) {
-						const option = createEl("option");
-						option.value = value;
-						option.textContent = label;
-						reading.append(option);
-					}
-					reading.value = item.reading;
-					reading.onchange = async () => {
-						reading.disabled = true;
-						try {
-							await saveReading(item.paper, item.seedId, reading.value as ReadingStatus, item.reading, item.source);
-							paintStaged();
-						}
-						catch (error) {
-							reading.value = error instanceof ReadingSaveError ? error.reading : item.reading;
-							infoBar.notify(error instanceof Error ? error.message : tr("阅读状态保存失败，请重试", "Could not save reading status. Try again."), "error");
-						}
-						finally { reading.disabled = false; }
-					};
-					const remove = el(actions, "button", "cpo-library-action is-quiet", tr("移除", "Remove"));
-					remove.type = "button";
-					remove.onclick = async () => {
-						updateProjectPaperState(projects, item.seedId, item.paper, { staged: false });
-						try { await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); }
-						catch { updateProjectPaperState(projects, item.seedId, item.paper, { staged: true }); infoBar.notify(tr("暂存状态保存失败，请重试", "Could not save the saved-paper state. Try again."), "error"); }
-					};
-				});
-			}
-		}
+		const list = el(listPanel, "ol", "cpo-agg-list");
+		for (const entry of bookmarks) paintLibraryCard(list, entry.paper, "", actions => {
+			paintPaperActions(actions, entry.paper, { library, openExternal: deps.openExternal });
+		});
 	};
 
 	const paintExcluded = (): void => {
@@ -1007,17 +943,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			// Keep workflow state tied to the saved project, even when the comparison center changes.
 			const projectId = citationSession?.graph.nodes.find(node => node.isSeed)?.id ?? similarityBase?.nodes.find(node => node.isSeed)?.id ?? graph?.nodes.find(node => node.isSeed)?.id ?? paper.id;
 			const project = deps.getSettings().researchProjects[projectId];
-			const state = { ...(project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() }) };
+			const state = { ...(project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, excluded: false, source: "OpenAlex", updatedAt: Date.now() }) };
 			const noted = deps.lookupLiteratureNote?.(paper);
 			if (noted?.reading && !readingChangePending(deps.getSettings().researchProjects, projectId, paper)) state.reading = noted.reading;
 			paintPaperWorkflowState(detail, paper, state, (reading, previous) => saveReading(paper, projectId, reading, previous, state.source));
-			paintPaperActions(detail, paper, projectId, null, null, {
-				library: deps.paperLibrary,
-				getPaperState: (seedId, paperId) => deps.getSettings().researchProjects[seedId]?.paperStates?.[paperId],
-				setStaged: (target, seedId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, seedId, target, { staged, source }); },
-				persist: deps.stagePaper ? source => deps.stagePaper!(paper, projectId, source) : undefined,
-				openExternal: deps.openExternal,
-			});
+			paintPaperActions(detail, paper, { library: deps.paperLibrary, openExternal: deps.openExternal });
 			map.setSelected(paper.id); sheet.setSummary(paper.title, tr("相似度搜索结果", "Similarity search result")); return;
 		}
 		if (paper && discoveryGraph && discoveryPayload && exploreMode !== "citation") {
@@ -1025,7 +955,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const row = discoveryGraph.rows.get(paper.id);
 			if (!row) { el(detail, "p", "cpo-side-tip", tr("此节点代表问题或查询。选择一篇论文查看详情。", "This node represents the question or query. Select a paper for details.")); return; }
 			paintMetadataCard(detail, paper, undefined);
-			paintPaperActions(detail, paper, null, null, null, { library: deps.paperLibrary, getPaperState: () => undefined, setStaged: () => {}, openExternal: deps.openExternal });
+			paintPaperActions(detail, paper, { library: deps.paperLibrary, openExternal: deps.openExternal });
 			const scoreText = discoveryPayload.mode === "rank" ? `ASReview priority percentile: ${row.priority ?? "training seed"}. Screening order, not a relevance probability.`
 				: `PaperQA2 retrieval rank: ${row.rank ?? "unknown"}. Retrieval position, not a similarity score.`;
 			el(detail, "p", "cpo-fact-note", scoreText);
@@ -1081,11 +1011,11 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			acknowledgeIdentityStates(project, paper);
 			void deps.persistSettings?.(); showDetail(paper);
 		});
-		let state = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+		let state = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
 		if (noted?.reading && noted.reading !== state.reading && !readingChangePending(deps.getSettings().researchProjects, seedId, paper)) {
 			state = { ...state, reading: updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: noted.reading }).reading };
-			void (deps.persistSettings ? deps.persistSettings() : deps.stagePaper?.(paper, seedId, state.source));
+			void (deps.persistSettings?.());
 		}
 		paintPaperWorkflowState(detail, paper, state, (reading, previous) => saveReading(paper, seedId, reading, previous, state.source), !paper.isSeed ? () => removePaper(paper) : undefined);
 		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote, noted.alternatives);
@@ -1094,7 +1024,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (diveIndex >= 0) {
 			const batch = deepDiveBatches[diveIndex]!;
 			const parent = graph.nodes.find((node) => node.id === batch.parentId) ?? graph.catalog.find((node) => node.id === batch.parentId);
-			const sources = [...new Set(batch.additions.filter((item) => item.paperId === paper.id).map((item) => ({ reference: tr("参考文献", "References"), citation: tr("施引文献", "Citing papers"), "shared-reference": tr("共享参考文献候选", "Shared-reference candidate"), legacy: tr("既有深挖记录", "Earlier deep-dive record") })[item.source]))].join("、");
+			const sources = [...new Set(batch.additions.filter((item) => item.paperId === paper.id).map((item) => ({ reference: tr("参考文献", "References"), citation: tr("施引文献", "Citing papers"), "shared-reference": tr("共享参考文献候选", "Shared-reference candidate") })[item.source]))].join("、");
 			const identityCard = detail.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? detail;
 			const actionRow = identityCard.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
 			const diveNote = createEl("p");
@@ -1103,15 +1033,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (actionRow) identityCard.insertBefore(diveNote, actionRow);
 			else identityCard.append(diveNote);
 		}
-		const stageEdge = seedNode && !paper.isSeed ? findEdge(graph.edges, paper.id, seedNode.id) : null;
-		const stageEvidence = seedNode && !paper.isSeed ? graph.citationEvidence?.get(paper.id, seedNode.id) ?? graph.citationEvidence?.get(seedNode.id, paper.id) ?? null : null;
-		paintPaperActions(detail, paper, seedNode?.id ?? null, stageEdge, stageEvidence, {
-			library: deps.paperLibrary,
-			getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
-			setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
-			persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seedNode!.id, source) : undefined,
-			openExternal: deps.openExternal,
-		});
+		paintPaperActions(detail, paper, { library: deps.paperLibrary, openExternal: deps.openExternal });
 		paintAbstractCard(detail, paper, abstractText);
 		if (seedNode && !paper.isSeed && layoutMode === "radial") {
 			paintComparisonCard(detail, similarityKind, comparison[similarityKind].get(paper.id), comparison.details.get(paper.id));
@@ -1171,7 +1093,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		else if (discoveryGraph) deps.researchLibrary?.()?.prefetch?.(discoveryGraph.nodes.filter(paper => paper.id !== "discovery:query"));
 		map.refreshLibraryStatus();
 		if (selectedPaper && tab === "graph") showDetail(selectedPaper);
-		else if (tab === "staged") paintStaged();
+		else if (tab === "bookmarks") paintBookmarks();
 	};
 	window.addEventListener("research-connected-library-changed", onLibraryChanged);
 	map.onNodeMenu = (paper, x, y) => {
@@ -1484,8 +1406,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	libraryButton.addEventListener("click", () => {
-		const inLibrary = tab === "staged" || tab === "excluded";
-		tab = inLibrary ? "graph" : "staged";
+		const inLibrary = tab === "bookmarks" || tab === "excluded";
+		tab = inLibrary ? "graph" : "bookmarks";
 		chrome?.setTab(tab);
 		if (tab !== "graph") sheet.setExpanded(true);
 		paintLists();
@@ -1504,26 +1426,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		setBusy(false);
 		refreshProjectSelect(project.seedId);
 	});
-	function openSavedPaper(seedId: string, paper: PaperNode): void {
-		const project = deps.getSettings().researchProjects[seedId];
-		if (exploreMode !== "citation" || currentSeedId() !== seedId) {
-			const snapshot = project && restoreGraphSnapshot(project.snapshot);
-			if (!snapshot) {
-				const note = deps.lookupLiteratureNote?.(paper);
-				if (note && deps.openLiteratureNote) deps.openLiteratureNote(note.path);
-				else if (paper.doiUrl || paper.openAlexUrl) deps.openExternal(paper.doiUrl || paper.openAlexUrl);
-				else infoBar.notify(tr("此论文没有保存的图谱、匹配笔记或在线链接。", "No saved graph, matching note, or online link is available for this paper."), "error");
-				return;
-			}
-			flushProjectSave(); clearUndo(); generation++;
-			deepDiveBatches = project.deepDives ?? [];
-			applyGraph(snapshot, project.currentView, false, false);
-			setBusy(false);
-		}
-		activateGraphTab();
-		showDetail(graph?.nodes.find(node => paperHasId(node, paper.id)) ?? paper);
-		scheduleProjectSave();
-	}
 	questionSelect.addEventListener("change", () => {
 		const nextQuestion = questionSelect.value;
 		const previousMode = exploreMode;

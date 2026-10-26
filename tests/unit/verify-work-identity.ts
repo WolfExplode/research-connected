@@ -69,8 +69,8 @@ export function verifyWorkIdentity(): void {
 	const addedContext = normalizeWorkGraph({ ...citingRoundTrip, coCitationContextIds: [seed.id, "W999"] });
 	assert.ok(addedContext.workIdentity?.contextIds?.includes("W999"), "context-only changes must update reversible source data");
 	const project: ResearchProject = { version: 1, seedId: seed.id, name: "Nichols", updatedAt: 1, snapshot, views: [], paperStates: {
-		[seed.id]: { paper: seed, reading: "unread", staged: true, excluded: false, source: "OpenAlex", updatedAt: 1 },
-		[alias.id]: { paper: alias, reading: "read", staged: false, excluded: true, source: "OpenAlex", updatedAt: 2 },
+		[seed.id]: { paper: seed, reading: "unread", excluded: false, source: "OpenAlex", updatedAt: 1 },
+		[alias.id]: { paper: alias, reading: "read", excluded: true, source: "OpenAlex", updatedAt: 2 },
 	}, currentView: { name: "Alias selected", selectedId: alias.id, layout: "force2d", scrubYear: null, zoom: 1, centerX: 0, centerY: 0, updatedAt: 1 },
 	deepDives: [{ id: "batch", parentId: alias.id, createdAt: 1, references: 1, citations: 0, additions: [{ paperId: alias.id, source: "reference" }], noMore: false, warnings: [] }] };
 	const migrated = normalizeProjects({ [seed.id]: project });
@@ -87,10 +87,9 @@ export function verifyWorkIdentity(): void {
 	assert.equal(current.identityConflicts?.includes(seed.id), false, "acknowledging a legacy conflict survives future refreshes");
 	assert.equal(savedProjectForSeed(migrated, { kind: "openalex", value: alias.id }), current);
 	assert.equal(savedProjectForSeed(migrated, { kind: "doi", value: alias.doiUrl! }), current);
-	updateProjectPaperState(migrated, seed.id, alias, { reading: "to-read", staged: false });
+	updateProjectPaperState(migrated, seed.id, alias, { reading: "to-read" });
 	reconcileProjectIdentity(current, graph);
 	assert.equal(current.paperStates![seed.id]?.reading, "to-read");
-	assert.equal(current.paperStates![seed.id]?.staged, false);
 	assert.equal(Object.keys(current.paperStates!).length, 1);
 	reconcileProjectIdentity(current, split);
 	assert.equal(current.paperStates![alias.id]?.reading, "to-read", "explicit post-merge reading changes follow both restored records");

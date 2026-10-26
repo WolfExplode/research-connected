@@ -21,7 +21,7 @@ and sizing separate. Its paper library runs on the research repository's CLI as 
 | Text/citation comparison and retrieval UI | src/paper-comparison.ts, src/similarity-search.ts, src/similarity-explorer.ts, src/workflow/literature-search.ts |
 | Scholarly source adapters | src/openalex.ts, src/citation-sources.ts, src/obsidian-http.ts |
 | Per-service request lanes, shared rate-limit pauses and the OpenAlex response cache | src/provider-limits.ts, src/provider-pause-file.ts, src/research-tools.ts |
-| Vault-owned paper actions and bookmark migration | src/paper-library.ts, src/vault-paper-library.ts, src/workflow/bookmark-migration.ts |
+| Vault-owned paper actions | src/paper-library.ts, src/vault-paper-library.ts |
 | Literature notes and the graph's library interface and panel | src/vault-note.ts, src/library-panel.ts |
 | Paper library over the research CLI (holdings, availability, Save, Bookmark, SPECTER2, discovery, labels) | src/research-library.ts, src/research-tools.ts, src/open-access-queue.ts, src/availability-policy.ts, src/fetched-evidence.ts, src/paper-labels.ts |
 | Question-scoped discovery | src/question-workspace.ts, src/discovery-graph.ts |
@@ -129,6 +129,5 @@ PaperLibrary is the shared paper-action interface. The Obsidian adapter finds or
 reads the vault-wide bookmark flag, delegates note writes and acquisition to ResearchLibrary, and shares
 in-flight mutations across surfaces. The note remains authoritative; confirmed-write caches cover
 Obsidian metadata-index delay and are invalidated on note changes. The companion library writer
-owns source naming, sidecars, file validation, and acquisition outcomes. Project `staged` flags are
-legacy migration inputs, not the source of truth for new bookmarks. Migration backs up plugin data
-and clears each legacy flag only after a durable vault write and persisted receipt.
+owns source naming, sidecars, file validation, and acquisition outcomes. Bookmarks live only in
+paper-note frontmatter; projects keep reading state and exclusions.

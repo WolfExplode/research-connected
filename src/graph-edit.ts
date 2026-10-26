@@ -6,10 +6,6 @@ import type { SelectionRank } from "./neighborhood";
 import type { GraphEdge, PaperNode } from "./types";
 
 export const EXPAND_CAP = 8;
-/** Max seeds remembered for grafted members. */
-export const GRAFT_SEED_CAP = 24;
-/** Max grafted paper ids kept per seed. */
-export const GRAFT_IDS_CAP = 80;
 
 /** The fields omit/graft/refresh touch. SimilarityGraph is a structural match. */
 export interface EditableGraph {
@@ -255,62 +251,4 @@ export function couplingFill<T extends EditableGraph>(
 	}
 	scored.sort((a, b) => b.shared * (b.paper.retracted ? 0.1 : 1) - a.shared * (a.paper.retracted ? 0.1 : 1) || b.paper.citedByCount * (b.paper.retracted ? 0.1 : 1) - a.paper.citedByCount * (a.paper.retracted ? 0.1 : 1) || a.paper.id.localeCompare(b.paper.id));
 	return scored.slice(0, need).map((item) => item.paper);
-}
-
-/** Normalize persisted seed → grafted OpenAlex ids. */
-export function normalizeGrafted(raw: unknown): Record<string, string[]> {
-	if (!raw || typeof raw !== "object") return {};
-	const out: Record<string, string[]> = {};
-	for (const [seedId, ids] of Object.entries(raw as Record<string, unknown>)) {
-		if (!/^W\d+$/i.test(seedId) || !Array.isArray(ids)) continue;
-		const clean = [...new Set(ids.filter((id): id is string => typeof id === "string" && /^W\d+$/i.test(id)).map((id) => id.toUpperCase()))];
-		if (clean.length) out[seedId.toUpperCase()] = clean.slice(0, GRAFT_IDS_CAP);
-	}
-	return out;
-}
-
-export function graftedFor(store: Record<string, string[]>, seedId: string): string[] {
-	return store[seedId.toUpperCase()] ?? [];
-}
-
-export function rememberGrafted(
-	store: Record<string, string[]>,
-	seedId: string,
-	ids: readonly string[],
-): Record<string, string[]> {
-	const key = seedId.toUpperCase();
-	const next = { ...store };
-	const have = new Set(next[key] ?? []);
-	for (const id of ids) {
-		if (/^W\d+$/i.test(id)) have.add(id.toUpperCase());
-	}
-	next[key] = [...have].slice(0, GRAFT_IDS_CAP);
-	const keys = Object.keys(next);
-	if (keys.length <= GRAFT_SEED_CAP) return next;
-	// Drop oldest keys (object key order is insertion order).
-	for (const drop of keys.slice(0, keys.length - GRAFT_SEED_CAP)) delete next[drop];
-	return next;
-}
-
-export function forgetGrafted(
-	store: Record<string, string[]>,
-	seedId: string,
-	id: string,
-): Record<string, string[]> {
-	const key = seedId.toUpperCase();
-	const list = nextWithout(store[key], id.toUpperCase());
-	if (!list) {
-		if (!(key in store)) return store;
-		const next = { ...store };
-		delete next[key];
-		return next;
-	}
-	return { ...store, [key]: list };
-}
-
-function nextWithout(list: string[] | undefined, id: string): string[] | null {
-	if (!list?.length) return null;
-	const filtered = list.filter((item) => item !== id);
-	if (filtered.length === list.length) return list;
-	return filtered.length ? filtered : null;
 }

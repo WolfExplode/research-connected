@@ -13,7 +13,6 @@ import type { PaperLibraryService } from "./library-panel";
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
 	saveSettings(notify?: boolean): Promise<void>;
-	migrateBookmarks?(): Promise<void>;
 	researchLibrary?(): PaperLibraryService | null;
 }
 
@@ -81,9 +80,7 @@ export class ConnectedPapersView extends ItemView {
 			openLiteratureNote: (path) => { void openLiteratureNote(this.app, path); },
 			syncLiteratureReading: (paper, reading) => syncLiteratureReading(this.app, paper, reading, this.host.getSettings().literatureDoiProperty),
 			rememberLiteratureNote,
-			retryBookmarkMigration: this.host.migrateBookmarks ? () => this.host.migrateBookmarks!() : undefined,
 			paperLibrary: vaultPaperLibrary(this.app, () => this.host.getSettings(), () => this.host.researchLibrary?.() ?? null),
-			stagePaper: async () => { await this.host.saveSettings(false); },
 			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
 			statusHost: this.headerStatus ?? undefined,
 		saveProject: async (project: ResearchProject) => {

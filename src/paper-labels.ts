@@ -1,5 +1,5 @@
 import { App, Modal, Notice, Setting, TFile } from "obsidian";
-import { bookmarkOf, migrateBookmark, QUESTIONS, type ResearchLibrary } from "./research-library";
+import { bookmarkOf, QUESTIONS, type ResearchLibrary } from "./research-library";
 
 /**
  * Labels live in the paper note's frontmatter, where agents and the research CLI read them:
@@ -64,7 +64,7 @@ export class PaperLabelsModal extends Modal {
 		save.addEventListener("click", () => {
 			save.disabled = true;
 			void (async () => {
-				if (Object.keys(changes).length) await this.app.fileManager.processFrontMatter(this.file, (fm: Record<string, unknown>) => { migrateBookmark(fm); Object.assign(fm, changes); });
+				if (Object.keys(changes).length) await this.app.fileManager.processFrontMatter(this.file, (fm: Record<string, unknown>) => { Object.assign(fm, changes); });
 				this.saved(); this.close(); new Notice("Paper labels saved.");
 			})().catch((error: unknown) => { save.disabled = false; new Notice(error instanceof Error ? error.message : "Labels could not be saved.", 10000); });
 		});

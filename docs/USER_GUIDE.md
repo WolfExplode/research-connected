@@ -188,11 +188,7 @@ reading notes. The bookmark button in the top workspace toolbar opens the same v
 from any task. Bookmarks can be exported and organized using question links in the library;
 changing graphs or questions does not change the flag. Exclude remains project-scoped and never
 means delete or a negative question judgment.
-
-Old project saved-paper entries migrate to vault bookmarks on startup, after a plugin-data backup.
-An existing note's bookmark choice wins. Failed entries remain available under legacy bookmarks;
-use **Retry migration** or the **Migrate legacy bookmarks to library** command. Legacy `favorite`
-properties are read compatibly and migrate to `bookmark`.
+Bookmarks need the research tools; without them the Bookmarks list says what to set up.
 
 ## Literature notes
 

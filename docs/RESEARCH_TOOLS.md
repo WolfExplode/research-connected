@@ -10,7 +10,7 @@ In settings, **Research tools repository** names the folder containing `Tools/re
 empty uses the folder that contains the vault. **Node executable** runs the tools (a path, or a
 command on PATH). The setting's description reports whether the tools were found. A checkout
 without `Tools/research/discover.js` is too old and is reported as such, rather than failing per
-action. Settings that Research Vault used to hold are copied once on first load.
+action.
 
 The research CLI owns Python and model keys: ASReview and PaperQA2 environments are found under
 the repository's `.cache/research-tools/` (or `RESEARCH_ASREVIEW_PYTHON` /

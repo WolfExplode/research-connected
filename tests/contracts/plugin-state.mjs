@@ -12,17 +12,13 @@ globalThis.window = { dispatchEvent() {} };
 try {
 	const plugin = new PluginClass();
 	const seed = { id: "W1", title: "Seed", isSeed: true, origin: "seed", doiUrl: null, year: 2000, citedByCount: 1, authors: "Author", authorList: ["Author"], abstract: "", openAlexUrl: "https://openalex.org/W1", language: "en", workType: "article", venue: null, retracted: false, concepts: [] };
-	const saved = { researchProjects: { W1: { version: 1, seedId: "W1", name: "Saved", updatedAt: 1, views: [], snapshot: { version: 1, seedId: "W1", savedAt: 1, nodes: [seed], catalog: [seed], edges: [], seedScore: [], referenceLists: [], citationEvidence: [], warnings: [], strategies: { references: true, citations: true, related: true }, skippedNonResearch: 0 } } } };
-	const files = new Map(); const writes = [];
-	plugin.manifest = { dir: ".obsidian/plugins/research-connected" };
-	plugin.app = { vault: { adapter: { exists: async (path) => files.has(path), write: async (path, value) => { files.set(path, value); } } } };
+	const saved = { researchProjects: { W1: { version: 1, seedId: "W1", name: "Saved", updatedAt: 1, views: [], snapshot: { version: 2, seedId: "W1", savedAt: 1, nodes: [seed], catalog: [seed], edges: [], seedScore: [], referenceLists: [], citationEvidence: [], warnings: [], strategies: { references: true, citations: true, related: true }, skippedNonResearch: 0 } } } };
+	const writes = [];
 	plugin.loadData = async () => structuredClone(saved);
-	plugin.saveData = async (value) => { assert.ok(files.size, "backup must precede the migrated write"); writes.push(value); };
+	plugin.saveData = async (value) => { writes.push(value); };
 	await plugin.loadSettings();
-	assert.deepEqual(JSON.parse([...files.values()][0]), saved);
-	assert.equal(writes[0].researchProjects.W1.snapshot.version, 2);
-	await plugin.loadSettings();
-	assert.equal(files.size, 1, "the original backup must not be overwritten");
+	assert.equal(writes.length, 0, "loading current data writes nothing");
+	assert.equal(plugin.settings.researchProjects.W1.snapshot.version, 2);
 
 	let allowFirst;
 	const gate = new Promise((resolve) => { allowFirst = resolve; });
@@ -38,14 +34,7 @@ try {
 	plugin.saveData = async (data) => { order.push(data.maxNodes); };
 	await plugin.saveSettings(false);
 	assert.equal(order.length, 3, "a failed save must not block later retries");
-
-	const blocked = new PluginClass(); let overwritten = false;
-	blocked.manifest = plugin.manifest;
-	blocked.app = { vault: { adapter: { exists: async () => false, write: async () => { throw new Error("backup failed"); } } } };
-	blocked.loadData = plugin.loadData; blocked.saveData = async () => { overwritten = true; };
-	await assert.rejects(blocked.loadSettings(), /backup failed/);
-	assert.equal(overwritten, false, "backup failure must preserve the original data");
-	console.log("plugin migration and serialized persistence checks passed");
+	console.log("plugin loading and serialized persistence checks passed");
 } finally {
 	if (oldWindow === undefined) delete globalThis.window;
 	else globalThis.window = oldWindow;

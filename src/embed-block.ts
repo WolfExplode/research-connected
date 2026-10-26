@@ -52,7 +52,6 @@ class ConnectedPapersEmbed extends MarkdownRenderChild {
 			openExternal,
 			paperLibrary: vaultPaperLibrary(plugin.app, () => plugin.getSettings(), () => plugin.researchLibrary?.() ?? null),
 			researchLibrary: () => plugin.researchLibrary?.() ?? null,
-			stagePaper: async () => { await plugin.saveSettings(false); },
 			createNote: (filename, markdown, folder) => createVaultNote(plugin.app, filename, markdown, folder),
 			lookupLiteratureNote: (paper) => lookupLiteratureNote(plugin.app, paper, plugin.getSettings().literatureDoiProperty),
 			openLiteratureNote: (path) => { void openLiteratureNote(plugin.app, path); },

@@ -40,13 +40,7 @@ export const openAlexId = (value: unknown): string | null => /^(?:https?:\/\/ope
 const fileTitle = (file: VaultFile): string => file.path.split("/").at(-1)!.replace(/\.[^.]+$/, "").replace(/^.+? (?:18|19|20)\d{2}[a-z]? - /i, "");
 const fileYear = (file: VaultFile): string | null => /^.+? ((?:18|19|20)\d{2})[a-z]? - /i.exec(file.path.split("/").at(-1)!)?.[1] ?? null;
 const propDoi = (value: unknown): string | null => typeof value === "string" ? normalizeDoi(value) : null;
-// Retain legacy selections without letting them override an explicit new bookmark value.
-export const bookmarkOf = (props: Record<string, unknown>): boolean => Object.prototype.hasOwnProperty.call(props, "bookmark") ? props.bookmark === true : props.favorite === true;
-export function migrateBookmark(props: Record<string, unknown>): void {
-	if (!Object.prototype.hasOwnProperty.call(props, "favorite")) return;
-	if (!Object.prototype.hasOwnProperty.call(props, "bookmark")) props.bookmark = props.favorite === true;
-	delete props.favorite;
-}
+export const bookmarkOf = (props: Record<string, unknown>): boolean => props.bookmark === true;
 
 interface Holding {
 	state: "held" | "note-only"; note: string | null; files: string[]; doi: string | null; openalex: string | null;
@@ -55,7 +49,7 @@ interface Holding {
 interface HoldingsIndex { doi: Map<string, Holding[]>; openalex: Map<string, Holding[]>; title: Map<string, Holding[]>; note: Map<string, Holding>; files: Set<string> }
 
 // What a graph shows about a note; any other frontmatter edit does not refresh open graphs.
-const FINGERPRINT = ["type", "title", "year", "doi", "openalex", "pdf", "fulltext", "full_text", "bookmark", "favorite", "reading_status", "needs_reason"];
+const FINGERPRINT = ["type", "title", "year", "doi", "openalex", "pdf", "fulltext", "full_text", "bookmark", "reading_status", "needs_reason"];
 const fingerprint = (props: Record<string, unknown> | null): string => JSON.stringify(FINGERPRINT.map(key => props?.[key] ?? null));
 
 export class ResearchLibrary implements PaperLibraryService {
@@ -214,12 +208,12 @@ export class ResearchLibrary implements PaperLibraryService {
 
 	save(paper: PaperNode): Promise<LibraryAvailability> { return this.keep(paper, { download: true }); }
 
-	bookmark(paper: PaperNode, value: boolean, options: { onlyIfMissing?: boolean; source?: string; reading?: string } = {}): Promise<LibraryAvailability> {
-		return this.keep(paper, { bookmark: value, ...options });
+	bookmark(paper: PaperNode, value: boolean): Promise<LibraryAvailability> {
+		return this.keep(paper, { bookmark: value });
 	}
 
 	// Serialize mutations across panes and embeds; repeated acquisitions share one in-flight request.
-	private keep(paper: PaperNode, options: { download?: boolean; bookmark?: boolean; onlyIfMissing?: boolean; source?: string; reading?: string }): Promise<LibraryAvailability> {
+	private keep(paper: PaperNode, options: { download?: boolean; bookmark?: boolean }): Promise<LibraryAvailability> {
 		const key = paperDois(paper)[0] || openAlexId(paper.openAlexUrl || paper.id) || localTitle(paper.title);
 		const running = options.download ? this.downloads.get(key) : undefined;
 		if (running) return running;
@@ -227,12 +221,7 @@ export class ResearchLibrary implements PaperLibraryService {
 			const local = this.read(paper).local;
 			if (local.state === "ambiguous") throw new Error("Multiple library notes match. Review them before saving.");
 			if (local.note && !options.download) {
-				await this.host.processFrontMatter(local.note, props => {
-					const hasChoice = Object.prototype.hasOwnProperty.call(props, "bookmark") || Object.prototype.hasOwnProperty.call(props, "favorite");
-					migrateBookmark(props);
-					if (!options.onlyIfMissing || !hasChoice) props.bookmark = options.bookmark;
-					if (options.source) props.discovery_sources = [...new Set([...(Array.isArray(props.discovery_sources) ? props.discovery_sources as unknown[] : []), options.source])];
-				});
+				await this.host.processFrontMatter(local.note, props => { props.bookmark = options.bookmark; });
 				this.index = null; this.changed();
 				return this.read(paper);
 			}
@@ -252,9 +241,6 @@ export class ResearchLibrary implements PaperLibraryService {
 			const args = ["keep", "-"];
 			if (options.download) args.push("--download");
 			if (typeof options.bookmark === "boolean") args.push(options.bookmark ? "--bookmark" : "--unbookmark");
-			if (options.onlyIfMissing) args.push("--if-missing");
-			if (options.source) args.push("--source", options.source);
-			if (options.reading) args.push("--reading-status", options.reading);
 			const response = await this.tools.json(args, { acceptFailure: true, input: JSON.stringify(metadata) });
 			const outcome = response.results?.[0];
 			this.index = null; this.changed();

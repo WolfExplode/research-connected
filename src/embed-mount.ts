@@ -46,7 +46,6 @@ export interface EmbedDeps {
 	paperLibrary?: PaperLibrary;
 	/** Holdings, availability and stored text from the research tools; null when none are configured. */
 	researchLibrary?: () => PaperLibraryService | null;
-	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
 	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
 	openLiteratureNote?: (path: string) => void;
@@ -78,7 +77,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const library = (): PaperLibraryService | null => deps.researchLibrary?.() ?? null;
 	const saveReading = (paper: PaperNode, seedId: string, reading: ReadingStatus, previous: ReadingStatus, source: string): Promise<void> =>
 		saveReadingState({ projects: deps.getSettings().researchProjects, seedId, paper, reading, previous,
-			persist: () => deps.stagePaper?.(paper, seedId, source), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
+			persist: () => deps.persistSettings?.(), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
 			infoBar.notify(error instanceof Error ? error.message : tr("阅读状态保存失败", "Could not save reading status"), "error");
 			throw error;
 		});
@@ -359,7 +358,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		prior: tr("先验工作", "Prior works"),
 		derivative: tr("衍生工作", "Derivative works"),
 		research: tr("研究脉络", "Research narrative"),
-		staged: tr("暂存列表", "Saved papers"),
+		bookmarks: tr("收藏", "Bookmarks"),
 		excluded: tr("已排除论文", "Excluded papers"),
 	};
 
@@ -384,11 +383,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		}, (card, paper) => {
 			if (!seed) return;
 			const settings = deps.getSettings();
-			const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+			const state = settings.researchProjects[seed.id]?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 			paintPaperWorkflowState(card, paper, state, (reading, previous) => saveReading(paper, seed.id, reading, previous, state.source), async () => {
 				updateProjectPaperState(settings.researchProjects, seed.id, paper, { excluded: true });
 				try {
-					await deps.stagePaper?.(paper, seed.id, state.source);
+					await deps.persistSettings?.();
 					if (currentGraph?.nodes.some((node) => node.id === paper.id) && sourceGraph) renderGraph(sourceGraph, lastDepthNote);
 					else paintLists();
 				} catch {
@@ -401,13 +400,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					card.append(error);
 				}
 			});
-			paintPaperActions(card, paper, seed.id, null, null, {
-				library: deps.paperLibrary,
-				getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
-				setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
-				persist: deps.stagePaper ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
-				openExternal: deps.openExternal,
-			});
+			paintPaperActions(card, paper, { library: deps.paperLibrary, openExternal: deps.openExternal });
 		});
 	};
 
@@ -544,17 +537,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			// Keep workflow state tied to the saved project, even when the comparison center changes.
 			const projectId = currentGraph?.nodes.find(node => node.isSeed)?.id ?? paper.id;
 			const project = deps.getSettings().researchProjects[projectId];
-			const state = { ...(project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() }) };
+			const state = { ...(project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, excluded: false, source: "OpenAlex", updatedAt: Date.now() }) };
 			const noted = deps.lookupLiteratureNote?.(paper);
 			if (noted?.reading && !readingChangePending(deps.getSettings().researchProjects, projectId, paper)) state.reading = noted.reading;
 			paintPaperWorkflowState(detail, paper, state, (reading, previous) => saveReading(paper, projectId, reading, previous, state.source));
-			paintPaperActions(detail, paper, projectId, null, null, {
-				library: deps.paperLibrary,
-				getPaperState: (seedId, paperId) => deps.getSettings().researchProjects[seedId]?.paperStates?.[paperId],
-				setStaged: (target, seedId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, seedId, target, { staged, source }); },
-				persist: deps.stagePaper ? source => deps.stagePaper!(paper, projectId, source) : undefined,
-				openExternal: deps.openExternal,
-			});
+			paintPaperActions(detail, paper, { library: deps.paperLibrary, openExternal: deps.openExternal });
 			map.setSelected(paper.id); sheet.setSummary(paper.title, tr("相似度搜索结果", "Similarity search result")); return;
 		}
 		paintMetadataCard(detail, paper, graph.crossCheck?.get(paper.id));
@@ -568,30 +555,22 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			const next = separateWorkRecords(sourceGraph ?? currentGraph, paper);
 			if (project) { reconcileProjectIdentity(project, next); project.snapshot = saveGraphSnapshot(next); }
 			renderGraph(next, lastDepthNote);
-			void deps.stagePaper?.(paper, seedId, "OpenAlex");
+			void deps.persistSettings?.();
 		}, project?.identityConflicts?.includes(paper.id), () => {
 			if (!project) return;
 			acknowledgeIdentityStates(project, paper);
-			void deps.stagePaper?.(paper, seedId, "OpenAlex"); showDetail(paper, graph, link);
+			void deps.persistSettings?.(); showDetail(paper, graph, link);
 		});
-		let paperState = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, staged: false, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
+		let paperState = project?.paperStates?.[paper.id] ?? { paper, reading: "unread" as const, excluded: false, source: "OpenAlex", updatedAt: Date.now() };
 		const noted = deps.lookupLiteratureNote?.(paper) ?? null;
 		if (noted?.reading && noted.reading !== paperState.reading && !readingChangePending(deps.getSettings().researchProjects, seedId, paper)) {
 			paperState = { ...paperState, reading: updateProjectPaperState(deps.getSettings().researchProjects, seedId, paper, { reading: noted.reading }).reading };
-			void deps.stagePaper?.(paper, seedId, paperState.source);
+			void deps.persistSettings?.();
 		}
 		paintPaperWorkflowState(detail, paper, paperState, (reading, previous) => saveReading(paper, seedId, reading, previous, paperState.source));
 		if (noted && deps.openLiteratureNote) paintLiteratureLink(detail, noted.path, deps.openLiteratureNote, noted.alternatives);
 		const getEvidence = (citingId: string, citedId: string) => graph.citationEvidence?.get(citingId, citedId) ?? null;
-		const stageEdge = seed && !paper.isSeed ? findEdge(graph.edges, paper.id, seed.id) : null;
-		const stageEvidence = seed && !paper.isSeed ? getEvidence(paper.id, seed.id) ?? getEvidence(seed.id, paper.id) : null;
-		paintPaperActions(detail, paper, seed?.id ?? null, stageEdge, stageEvidence, {
-			library: deps.paperLibrary,
-			getPaperState: (projectId, paperId) => deps.getSettings().researchProjects[projectId]?.paperStates?.[paperId],
-			setStaged: (target, projectId, staged, source) => { updateProjectPaperState(deps.getSettings().researchProjects, projectId, target, { staged, source }); },
-			persist: deps.stagePaper && seed ? (source) => deps.stagePaper!(paper, seed.id, source) : undefined,
-			openExternal: deps.openExternal,
-		});
+		paintPaperActions(detail, paper, { library: deps.paperLibrary, openExternal: deps.openExternal });
 		paintAbstractCard(detail, paper, embedAbstractText);
 		if (!paper.isSeed && seed && layoutMode === "radial") {
 			paintComparisonCard(detail, similarityKind, comparison[similarityKind].get(paper.id), comparison.details.get(paper.id));

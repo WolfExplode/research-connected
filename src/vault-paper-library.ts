@@ -5,12 +5,11 @@ import { lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote } from
 import { paperDois } from "./work-identity";
 import type { ConnectedPapersSettings } from "./settings-model";
 import type { LibraryBookmark, LibraryPaperState, PaperLibrary } from "./paper-library";
-import type { ReadingStatus } from "./project-state";
 import type { PaperNode } from "./types";
 
 const libraries = new WeakMap<App, { library: PaperLibrary; invalidate(path?: string): void }>();
 const text = (value: unknown): string => typeof value === "string" ? value : "";
-const bookmarked = (props: Record<string, unknown>): boolean => Object.prototype.hasOwnProperty.call(props, "bookmark") ? props.bookmark === true : props.favorite === true;
+const bookmarked = (props: Record<string, unknown>): boolean => props.bookmark === true;
 const key = (paper: PaperNode): string => paperDois(paper)[0] || paper.openAlexUrl || paper.id;
 // The research tools are the only writer of paper notes; without them, Save and Bookmark explain why.
 const noTools = (): string => tr("保存和收藏需要研究工具。请在 Research Connected 设置中配置研究工具仓库。", "Save and Bookmark need the research tools. Set the research tools repository in Research Connected settings.");
@@ -53,11 +52,11 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 		const task = prior.catch(() => {}).then(operation); pending.set(id, task); changed();
 		try { return await task; } catch (error) { errors.set(id, error instanceof Error ? error.message : "Library action failed"); throw error; } finally { if (pending.get(id) === task) { pending.delete(id); changed(); } }
 	}
-	async function bookmark(paper: PaperNode, value: boolean, onlyIfMissing = false, source = "", reading?: ReadingStatus): Promise<void> {
+	async function bookmark(paper: PaperNode, value: boolean): Promise<void> {
 		await serial(paper, async () => {
 			const host = libraryService();
 			if (!host?.bookmark) throw new Error(noTools());
-			remember(paper, await host.bookmark(paper, value, { onlyIfMissing, source, reading }));
+			remember(paper, await host.bookmark(paper, value));
 			changed();
 		});
 	}
@@ -65,7 +64,6 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 		read,
 		busy: paper => pending.has(key(paper)),
 		setBookmark: (paper, value) => bookmark(paper, value),
-		migrateBookmark: (paper, source, reading) => bookmark(paper, true, true, source, reading),
 		save(paper) {
 			const id = key(paper), running = downloads.get(id); if (running) return running;
 			const task = serial(paper, async () => {

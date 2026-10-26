@@ -4,14 +4,13 @@ import { build } from "esbuild";
 class TFile {
   constructor(path) { this.path = path; this.extension = path.split(".").at(-1); this.basename = path.split("/").at(-1).replace(/\.md$/, ""); }
 }
-const target = await build({ entryPoints: ["src/vault-paper-library.ts", "src/workflow/bookmark-migration.ts", "src/vault-note.ts"], bundle: true, platform: "node", format: "cjs", external: ["obsidian"], write: false, outdir: ".cache/build/library-contract", logLevel: "silent" });
+const target = await build({ entryPoints: ["src/vault-paper-library.ts", "src/vault-note.ts"], bundle: true, platform: "node", format: "cjs", external: ["obsidian"], write: false, outdir: ".cache/build/library-contract", logLevel: "silent" });
 function load(name) {
   const loaded = { exports: {} }, output = target.outputFiles.find(file => file.path.endsWith(name + ".js"));
   new Function("module", "exports", "require", output.text)(loaded, loaded.exports, () => ({ TFile, getLanguage: () => "en" }));
   return loaded.exports;
 }
 const { vaultPaperLibrary, invalidatePaperLibrary } = load("vault-paper-library");
-const { migrateProjectBookmarks } = load("bookmark-migration");
 const oldWindow = globalThis.window; globalThis.window = new EventTarget();
 const paper = { id: "W12", title: "Cardiac exercise and autonomic function", doiUrl: "https://doi.org/10.1234/example", year: 2020, abstract: "Study abstract", authors: "Example", authorList: ["Example"], openAlexUrl: "https://openalex.org/W12", origin: "related", isSeed: false, citedByCount: 0, retracted: false, concepts: [] };
 function harness() {
@@ -51,14 +50,13 @@ try {
   const kept = harness(), bookmarkCalls = [];
   const tools = {
     read: () => ({ local: { state: "absent", note: null, files: [] } }),
-    bookmark: async (_paper, value, options) => { bookmarkCalls.push([value, options.onlyIfMissing, options.source]); return { local: { state: "note-only", note: "Research/Papers/Example.md", files: [], bookmark: value } }; },
+    bookmark: async (_paper, value) => { bookmarkCalls.push(value); return { local: { state: "note-only", note: "Research/Papers/Example.md", files: [], bookmark: value } }; },
   };
   const keptLibrary = vaultPaperLibrary(kept.app, () => kept.settings, () => tools);
   await keptLibrary.setBookmark(paper, true);
   assert.equal(keptLibrary.read(paper).note, "Research/Papers/Example.md"); assert.equal(keptLibrary.read(paper).bookmark, true);
   assert.equal(keptLibrary.bookmarks().length, 1, "a confirmed bookmark shows before Obsidian indexes the note");
-  await keptLibrary.migrateBookmark(paper, "Old project");
-  assert.deepEqual(bookmarkCalls.at(-1), [true, true, "Old project"], "migration asks the tools to keep an existing choice");
+  assert.deepEqual(bookmarkCalls, [true]);
   invalidatePaperLibrary(kept.app, "Research/Papers/Example.md");
   assert.equal(keptLibrary.bookmarks().length, 0, "a note change drops confirmed state in favor of the indexed note");
 
@@ -71,13 +69,5 @@ try {
   await first; assert.equal(calls, 1); assert.equal(integrated.read(paper).reason, "no-oa-copy");
   assert.equal(remote.files.size, 0, "the research library owns canonical source creation");
 
-  const legacy = { W1: { name: "First graph", paperStates: { W12: { paper, staged: true, source: "OpenAlex" } } } };
-  let fail = true, imports = 0;
-  const migrationLibrary = { migrateBookmark: async () => { imports++; } };
-  await assert.rejects(migrateProjectBookmarks(legacy, migrationLibrary, async () => { if (fail) throw new Error("disk full"); }), /disk full/);
-  assert.equal(legacy.W1.paperStates.W12.staged, true);
-  fail = false; await migrateProjectBookmarks(legacy, migrationLibrary, async () => {});
-  assert.equal(legacy.W1.paperStates.W12.staged, false); assert.equal(imports, 2);
-  await migrateProjectBookmarks(legacy, migrationLibrary, async () => {}); assert.equal(imports, 2);
-  console.log("tool-only note writes, acquisition delegation and migration receipts passed");
+  console.log("tool-only note writes and acquisition delegation passed");
 } finally { if (oldWindow === undefined) delete globalThis.window; else globalThis.window = oldWindow; }

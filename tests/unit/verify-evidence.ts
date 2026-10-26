@@ -15,14 +15,6 @@ import { summarizeWithLlmPost } from "../../src/llm";
 import type { SimilarityGraph } from "../../src/neighborhood";
 import type { GraphEdge, PaperNode } from "../../src/types";
 import { normalizeDoi } from "../../src/paper";
-import {
-	groupStagedBySeed,
-	normalizeStagedList,
-	stageKey,
-	stageSourceLabel,
-	toggleStaged,
-	wrapStagedList,
-} from "../../src/staging";
 import { findBudgetedCitationPath, resolvePathEndpoint } from "../../src/doi-path";
 import { shortId } from "../../src/paper";
 
@@ -53,25 +45,6 @@ export async function verifyEvidence(): Promise<void> {
 	assert.equal(graph.citationEvidence!.get("W2", "W1")!.influential, false);
 	assert.equal(graph.citationEvidence!.get("W2", "W1")!.relation, "method");
 	assert.equal(evidenceFromSemanticCitation("a", "b", {}).influential, undefined);
-	const staged = toggleStaged([], prior, seed.id, "种子引用了它 · OpenAlex");
-	assert.equal(staged.length, 1);
-	assert.equal(stageKey(staged[0]!), "W1\0W2");
-	assert.equal(toggleStaged(staged, prior, seed.id, "种子引用了它 · OpenAlex").length, 0);
-	const wrapped = wrapStagedList(staged);
-	assert.equal(wrapped.version, 1);
-	assert.equal(normalizeStagedList(wrapped).length, 1);
-	assert.equal(normalizeStagedList(staged).length, 1, "legacy bare array still loads");
-	assert.equal(normalizeStagedList(null).length, 0);
-	const otherSeed = toggleStaged(staged, later, "W9", "它引用了种子 · OpenAlex");
-	assert.deepEqual(groupStagedBySeed(otherSeed).map((g) => g.seedId), ["W1", "W9"]);
-	const citeEdge: GraphEdge = {
-		source: "W1", target: "W2", weight: 0.5, coupling: 0, sharedRefs: 0, coCitation: 0, coCitedBy: 0, direct: "source-cites-target",
-	};
-	assert.equal(stageSourceLabel(prior, seed.id, citeEdge, null), "种子引用了它 · OpenAlex");
-	assert.equal(
-		stageSourceLabel(prior, seed.id, { ...citeEdge, direct: "none" }, null),
-		"引用了种子 · OpenAlex",
-	);
 	assert.deepEqual(doisFromOpenCitation({ citing: "[index] => omid:1 doi:10.1/ABC; doi:10.2/DEF" }).citing, ["10.1/abc", "10.2/def"]);
 	const evidence = buildNarrativeEvidence(graph, false);
 	assert.equal(evidence.priorWorks[0]!.id, "W2");

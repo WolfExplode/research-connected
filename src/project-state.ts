@@ -10,7 +10,7 @@ import type { PaperNode, GraphEdge } from "./types";
 
 export interface SavedGraphSnapshot {
 	textComparisons?: Array<[string, import("./paper-comparison").TextComparison]>;
-	version: 1 | 2;
+	version: 2;
 	workIdentity?: WorkIdentity;
 	savedAt: number;
 	seedId: string;
@@ -57,16 +57,15 @@ export type ReadingStatus = "unread" | "to-read" | "read";
 export interface ProjectPaperState {
 	paper: PaperNode;
 	reading: ReadingStatus;
-	staged: boolean;
 	excluded: boolean;
 	source: string;
 	updatedAt: number;
-	fieldUpdatedAt?: Partial<Record<"reading" | "staged" | "excluded", number>>;
+	fieldUpdatedAt?: Partial<Record<"reading" | "excluded", number>>;
 }
 
 export interface DeepDiveAddition {
 	paperId: string;
-	source: "reference" | "citation" | "shared-reference" | "legacy";
+	source: "reference" | "citation" | "shared-reference";
 }
 
 export interface DeepDiveBatch {
@@ -127,9 +126,9 @@ export function reconcileProjectIdentity(project: ResearchProject, graph: Simila
 		for (const id of targets) {
 			let value = state;
 			if (targets.size > 1) {
-				const base = original[id] ?? { paper: papers.get(id) ?? state.paper, reading: "unread" as const, staged: false, excluded: false, source: state.source, updatedAt: 0 };
+				const base = original[id] ?? { paper: papers.get(id) ?? state.paper, reading: "unread" as const, excluded: false, source: state.source, updatedAt: 0 };
 				value = { ...base, fieldUpdatedAt: { ...base.fieldUpdatedAt } };
-				for (const field of ["reading", "staged", "excluded"] as const) {
+				for (const field of ["reading", "excluded"] as const) {
 					const originalTime = Math.max(0, ...paperRecords(state.paper).map((record) => original[record.id]?.fieldUpdatedAt?.[field] ?? original[record.id]?.updatedAt ?? 0));
 					if ((state.fieldUpdatedAt?.[field] ?? 0) > originalTime) { Object.assign(value, { [field]: state[field] }); value.fieldUpdatedAt![field] = state.fieldUpdatedAt![field]; }
 				}
@@ -142,7 +141,7 @@ export function reconcileProjectIdentity(project: ResearchProject, graph: Simila
 	for (const [id, rows] of grouped) {
 		const recent = [...rows].sort((a, b) => b.updatedAt - a.updatedAt || a.paper.id.localeCompare(b.paper.id))[0]!;
 		const next = { ...recent, paper: papers.get(id) ?? recent.paper, fieldUpdatedAt: { ...recent.fieldUpdatedAt } };
-		for (const field of ["reading", "staged", "excluded"] as const) {
+		for (const field of ["reading", "excluded"] as const) {
 			const ordered = [...rows].sort((a, b) => (b.fieldUpdatedAt?.[field] ?? b.updatedAt) - (a.fieldUpdatedAt?.[field] ?? a.updatedAt) || a.paper.id.localeCompare(b.paper.id));
 			const winner = ordered[0]!;
 			Object.assign(next, { [field]: winner[field] });
@@ -189,11 +188,10 @@ export function updateProjectPaperState(
 	const previous = project.paperStates?.[paper.id];
 	const now = Math.max(Date.now(), (previous?.updatedAt ?? 0) + 1);
 	const fieldUpdatedAt = { ...previous?.fieldUpdatedAt };
-	for (const field of ["reading", "staged", "excluded"] as const) if (patch[field] !== undefined) fieldUpdatedAt[field] = now;
+	for (const field of ["reading", "excluded"] as const) if (patch[field] !== undefined) fieldUpdatedAt[field] = now;
 	const state: ProjectPaperState = {
 		paper,
 		reading: patch.reading ?? previous?.reading ?? "unread",
-		staged: patch.staged ?? previous?.staged ?? false,
 		excluded: paper.isSeed ? false : patch.excluded ?? previous?.excluded ?? false,
 		source: patch.source ?? previous?.source ?? "OpenAlex",
 		updatedAt: now,
@@ -204,43 +202,17 @@ export function updateProjectPaperState(
 	return state;
 }
 
-export function projectStagedPapers(projects: Record<string, ResearchProject>): Array<{ seedId: string; paper: PaperNode; source: string; addedAt: string; read: boolean; reading: ReadingStatus }> {
-	return Object.values(projects).flatMap((project) => Object.values(project.paperStates ?? {})
-		.filter((state) => state.staged)
-		.map((state) => ({ seedId: project.seedId, paper: state.paper, source: state.source, addedAt: new Date(state.updatedAt).toISOString(), read: state.reading === "read", reading: state.reading })));
-}
-
 export function projectExcludedPapers(project: ResearchProject): ProjectPaperState[] {
 	return Object.values(project.paperStates ?? {}).filter((state) => state.excluded);
 }
 
-/** Migrate old staged rows, snapshot exclusions, and remembered deep-dive IDs into the project record. */
-export function migrateProjectRecords(
-	projects: Record<string, ResearchProject>, legacyStaged: readonly { seedId: string; paper: PaperNode; source: string; read: boolean }[],
-	legacyGrafted: Record<string, string[]>,
-): Record<string, ResearchProject> {
-	for (const item of legacyStaged) {
-		const existing = projects[item.seedId.toUpperCase()]?.paperStates?.[item.paper.id];
-		if (!existing) updateProjectPaperState(projects, item.seedId, item.paper, { staged: true, reading: item.read ? "read" : "unread", source: item.source });
-	}
-	for (const seedId of Object.keys(legacyGrafted)) {
-		const key = seedId.toUpperCase();
-		if (!projects[key]) projects[key] = { version: 1, seedId: key, name: key, updatedAt: Date.now(), views: [] };
-	}
+/** Carry snapshot exclusions into the project's paper states. */
+export function migrateProjectRecords(projects: Record<string, ResearchProject>): Record<string, ResearchProject> {
 	for (const project of Object.values(projects)) {
 		const snapshot = project.snapshot;
 		if (snapshot) for (const id of snapshot.excludedIds ?? []) {
 			const paper = snapshot.nodes.find((node) => node.id === id) ?? snapshot.catalog.find((node) => node.id === id);
 			if (paper) updateProjectPaperState(projects, project.seedId, paper, { excluded: true });
-		}
-		const existing = new Set((project.deepDives ?? []).flatMap((batch) => batch.additions.map((item) => item.paperId)));
-		const legacyIds = (legacyGrafted[project.seedId] ?? []).filter((id) => !existing.has(id));
-		if (legacyIds.length) {
-			project.deepDives = [...(project.deepDives ?? []), {
-				id: `legacy-${project.seedId}`, parentId: project.seedId, createdAt: project.updatedAt,
-				references: 0, citations: 0, additions: legacyIds.map((paperId) => ({ paperId, source: "legacy" as const })),
-				noMore: false, warnings: [],
-			}];
 		}
 	}
 	return projects;
@@ -281,7 +253,7 @@ export function saveGraphSnapshot(graph: SimilarityGraph): SavedGraphSnapshot {
 export function restoreGraphSnapshot(raw: unknown): SimilarityGraph | null {
 	if (!raw || typeof raw !== "object") return null;
 	const saved = JSON.parse(JSON.stringify(raw)) as Partial<SavedGraphSnapshot>;
-	if (![1, 2].includes(saved.version ?? 0) || !Array.isArray(saved.nodes) || !Array.isArray(saved.edges) || !Array.isArray(saved.seedScore) || !Array.isArray(saved.referenceLists) || !Array.isArray(saved.catalog)) return null;
+	if (saved.version !== 2 || !Array.isArray(saved.nodes) || !Array.isArray(saved.edges) || !Array.isArray(saved.seedScore) || !Array.isArray(saved.referenceLists) || !Array.isArray(saved.catalog)) return null;
 	if (!saved.nodes.some((node) => node?.isSeed && node.id === saved.seedId)) return null;
 	try {
 		const identity = saved.workIdentity;
@@ -336,11 +308,10 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 			paperStates[id] = {
 				paper: rawState.paper,
 				reading: rawState.reading,
-				staged: Boolean(rawState.staged),
 				excluded: Boolean(rawState.excluded),
 				source: typeof rawState.source === "string" ? rawState.source.slice(0, 300) : "OpenAlex",
 				updatedAt: Number.isFinite(rawState.updatedAt) ? rawState.updatedAt : 0,
-				fieldUpdatedAt: rawState.fieldUpdatedAt && Object.fromEntries(Object.entries(rawState.fieldUpdatedAt).filter(([field, time]) => ["reading", "staged", "excluded"].includes(field) && Number.isFinite(time))),
+				fieldUpdatedAt: rawState.fieldUpdatedAt && Object.fromEntries(Object.entries(rawState.fieldUpdatedAt).filter(([field, time]) => ["reading", "excluded"].includes(field) && Number.isFinite(time))),
 			};
 		}
 		if (project.version !== 1 || (snapshot && snapshot.nodes.length > 300) || (!snapshot && Object.keys(paperStates).length === 0 && !project.deepDives?.length)) continue;
@@ -357,7 +328,7 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 				createdAt: Number.isFinite(batch.createdAt) ? batch.createdAt : 0,
 				references: Number.isFinite(batch.references) ? Math.max(0, batch.references) : 0,
 				citations: Number.isFinite(batch.citations) ? Math.max(0, batch.citations) : 0,
-				additions: batch.additions.filter((item) => item && typeof item.paperId === "string" && ["reference", "citation", "shared-reference", "legacy"].includes(item.source)).slice(0, 300),
+				additions: batch.additions.filter((item) => item && typeof item.paperId === "string" && ["reference", "citation", "shared-reference"].includes(item.source)).slice(0, 300),
 				noMore: Boolean(batch.noMore),
 				warnings: Array.isArray(batch.warnings) ? batch.warnings.filter((item): item is string => typeof item === "string").slice(0, 10) : [],
 			})) : [],

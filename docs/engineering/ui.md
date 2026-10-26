@@ -106,8 +106,6 @@ credentials, and rebuildable snapshots rather than a competing library record. P
 canonical note/sidecar writer, the research tools. Without them, Save and Bookmark explain what to
 set up and write nothing. Never silently merge ambiguous matches.
 
-Legacy project bookmarks migrate after an original-data backup. Copy each bookmark into the vault
-before clearing its old flag; preserve an existing note's explicit bookmark choice and reading
-state. Failed migrations retain their legacy entries and expose retry. Cache and in-flight state
+Cache and in-flight state
 are shared across panes/embeds; repeated saves share acquisition, and failures remain visible even
 when a detail card is repainted.

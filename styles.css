@@ -3381,7 +3381,6 @@ button.cpo-agg-item {
 	border-color: transparent;
 	background: transparent;
 }
-.cpo-staged-group-title { margin: 12px 0 4px; font-size: 10px; }
 .cpo-agg .cpo-tool-row { gap: 4px; }
 .cpo-library-header {
 	display: flex;

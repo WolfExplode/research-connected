@@ -20,7 +20,7 @@ export async function verifyPaperLibrary(root: HTMLElement): Promise<void> {
 		async setBookmark(paper, value) { stored = paper; state = { ...state, note: state.note || "Research/Papers/Example.md", bookmark: value }; changed(); },
 		async save(paper) { downloads++; stored = paper; state = { ...state, note: state.note || "Research/Papers/Example.md", reason: "no-oa-copy" }; changed(); return { ...state }; },
 		bookmarks: () => stored && state.bookmark ? [{ paper: stored, note: state.note!, reading: "unread" }] : [],
-		migrateBookmark: async () => {}, open: note => { opened = note; },
+		open: note => { opened = note; },
 	};
 	const settings = structuredClone(DEFAULT_SETTINGS); settings.s2Reconcile = false;
 	const handle = mountGraphApp(root, { getSettings: () => settings, getJson: fixtureGet, openExternal() {}, paperLibrary: library, initialDoi: "10.1234/seed" });
@@ -48,7 +48,7 @@ export async function verifyPaperLibrary(root: HTMLElement): Promise<void> {
 		const entry = root.querySelector<HTMLButtonElement>(".cpo-library-open")!;
 		check(entry.getClientRects().length, "bookmarks are reachable outside the citation task");
 		entry.click();
-		check(root.querySelectorAll(".cpo-library-card").length === 1 && !root.querySelector(".cpo-staged-group-title"), "bookmarks are a global collection without seed grouping");
+		check(root.querySelectorAll(".cpo-library-card").length === 1, "bookmarks are a global collection without seed grouping");
 		root.querySelector<HTMLButtonElement>(".cpo-library-card .cpo-local-paper")!.click();
 		check(opened === state.note, "bookmark cards reopen the same library note");
 	} finally { handle.destroy(); }

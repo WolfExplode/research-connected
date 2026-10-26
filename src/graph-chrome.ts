@@ -4,7 +4,7 @@ import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossChec
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
 import type { SimilarityKind } from "./paper-comparison";
 export type ExportKind = "bibtex" | "yaml" | "table" | "note";
-export type GraphTab = "graph" | "prior" | "derivative" | "research" | "staged" | "excluded";
+export type GraphTab = "graph" | "prior" | "derivative" | "research" | "bookmarks" | "excluded";
 
 export function createChromeIcon(name: "grid" | "clock" | "radial" | "play" | "pause" | "edit" | "save" | "project" | "views" | "refresh" | "fit" | "diagnose" | "external" | "bookmark" | "bookmarkCheck" | "read" | "exclude" | "copy" | "table" | "note" | "export" | "chevronDown"): SVGSVGElement {
 	const paths: Record<typeof name, string[]> = {

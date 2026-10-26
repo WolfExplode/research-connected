@@ -34,7 +34,7 @@ async function verify(): Promise<void> {
 		textLibrary: async () => { libraryCalls++; if (failLibrary) throw new Error("temporary library failure"); return []; },
 	};
 	const deps: AppDeps = { getSettings: () => settings, getJson: fixtureGet, openExternal() {},
-		persistSettings: persist, stagePaper: persist, saveProject: project => { settings.researchProjects[project.seedId] = project; persist(); },
+		persistSettings: persist, saveProject: project => { settings.researchProjects[project.seedId] = project; persist(); },
 		lookupLiteratureNote: () => ({ path: "Fixture.md", reading: noteReading }),
 		syncLiteratureReading: async (_paper, reading) => {
 			if (failNote) { failPersist = failRollback; throw new Error("frontmatter write failed"); }
@@ -63,11 +63,6 @@ async function verify(): Promise<void> {
 		await until(() => retryNote.hidden);
 		check(String(noteReading) === "read" && settings.researchProjects.W1?.paperStates?.W1?.reading === "read", "project notifications must not re-import stale note state during a reading change");
 
-		const save = root.querySelector<HTMLButtonElement>(".cpo-paper-stage")!;
-		check(save.getAttribute("aria-label")?.includes("Does not download a PDF") && !save.hasAttribute("title"), "Save must explain bookmarking through one host tooltip");
-		save.click(); await until(() => !save.disabled);
-		check(save.getAttribute("aria-label")?.includes("Remove this bookmark") && !save.hasAttribute("title"), "Saved tooltip must describe the reverse action");
-		save.click(); await until(() => !save.disabled);
 		check(reading.getAttribute("aria-label") === "Reading status" && !reading.hasAttribute("title"), "reading state must have one concise tooltip after retries");
 
 		button('[data-layout="temporal"]').click();
@@ -91,16 +86,6 @@ async function verify(): Promise<void> {
 		check(retry.hidden && root.querySelector(".cpo-status")?.textContent?.includes("No comparison papers"), "retry must recover and distinguish an empty result");
 		button('[data-layout="force2d"]').click();
 		method.value = "citation"; method.dispatchEvent(new Event("change"));
-
-		const originalSeed = settings.researchProjects.W1!.snapshot!.nodes.find(paper => paper.isSeed)!;
-		const other = { ...originalSeed, id: "W9", title: "Paper in another project", doiUrl: "https://doi.org/10.1234/other" };
-		settings.researchProjects.W9 = { version: 1, seedId: "W9", name: "Other project", updatedAt: 1, views: [],
-			snapshot: saveGraphSnapshot({ nodes: [other], edges: [], seedScore: new Map(), referenceLists: new Map(), catalog: [other], warnings: [], strategies: { references: false, citations: false, related: false }, skippedNonResearch: 0 }),
-			paperStates: { W9: { paper: other, reading: "unread", staged: true, excluded: false, source: "OpenAlex", updatedAt: 1 } } };
-		button('[aria-label="Citation graph"]').click(); button(".cpo-library-open").click();
-		const open = Array.from(root.querySelectorAll<HTMLButtonElement>(".cpo-library-card button")).find(item => item.textContent === "View")!;
-		open.click();
-		check(root.querySelector(".cpo-paper-identity")?.textContent?.includes(other.title), "saved-paper View must switch to its owning project");
 
 		for (const dark of [false, true]) {
 			root.style.setProperty("--background-primary", dark ? "#1e1e1e" : "#fff");
@@ -143,12 +128,13 @@ async function verify(): Promise<void> {
 			check(root.querySelector<HTMLElement>(".cpo-stage")!.clientHeight >= 249, "narrow embed must retain graph space");
 			check(Math.abs(root.querySelector<HTMLElement>(".cpo-evidence-sidebar")!.getBoundingClientRect().width - root.querySelector<HTMLElement>(".cpo-body")!.clientWidth) < 2, "embed sidebar must follow its container width");
 		} finally { destroyEmbed(); }
+		const originalSeed = settings.researchProjects.W1!.snapshot!.nodes.find(paper => paper.isSeed)!;
 		verifyCanvasLifecycle(root, originalSeed);
 		await verifyCitationComparison(root, originalSeed);
 		await verifyInfoBar(root);
 		await verifyPaperLibrary(root);
 	} finally { handle.destroy(); }
-	document.body.textContent = "PASS: reading compensation, close-time saves, timeline restore, library retry, saved-paper navigation, pane/embed widths, light/dark tokens, animation policy and document listener cleanup";
+	document.body.textContent = "PASS: reading compensation, close-time saves, timeline restore, library retry, pane/embed widths, light/dark tokens, animation policy and document listener cleanup";
 	document.body.dataset.result = "passed";
 }
 

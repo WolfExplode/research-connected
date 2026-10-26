@@ -6,11 +6,8 @@ import { graphKeyStats } from "../../src/filter-controls";
 import {
 	chooseExpand,
 	EXPAND_CAP,
-	forgetGrafted,
-	normalizeGrafted,
 	omitNode,
 	refreshDerived,
-	rememberGrafted,
 } from "../../src/graph-edit";
 import { buildCommunityRegions } from "../../src/community-regions";
 import { buildSimilarity } from "../../src/similarity";
@@ -340,10 +337,6 @@ function graphEdits(): void {
 	assert.deepEqual(chooseExpand(new Set(), new Set(), 1, { reference: [], citation: [retracted, normal] }).map((node) => node.id), [normal.id]);
 	assert.ok(picked.some((node) => node.id === "WEXPAND1"));
 	assert.ok(picked.some((node) => node.id === "WEXPAND2"));
-	const store = rememberGrafted({}, "w1", ["W2", "w2", "bad"]);
-	assert.deepEqual(store.W1, ["W2"]);
-	assert.deepEqual(normalizeGrafted({ W1: ["W2", 1, "W3"], x: ["W9"] }), { W1: ["W2", "W3"] });
-	assert.deepEqual(forgetGrafted(store, "W1", "W2"), {});
 }
 
 function literatureNotes(): void {

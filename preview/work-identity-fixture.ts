@@ -14,7 +14,7 @@ export function nicholsSnapshot(): SavedGraphSnapshot {
 		doiUrl: "https://doi.org/10.1353/lan.1986.0014", openAlexUrl: "https://openalex.org/W2027889013",
 		isSeed: false, origin: "reference", citedByCount: 1292 };
 	return {
-		version: 1, savedAt: 1, seedId: seed.id, nodes: [seed, alias], catalog: [seed, alias],
+		version: 2, savedAt: 1, seedId: seed.id, nodes: [seed, alias], catalog: [seed, alias],
 		edges: [{ source: seed.id, target: alias.id, weight: 1, sharedRefs: 14, coupling: 0.5, coCitation: 0, coCitedBy: 0, direct: "none" }],
 		seedScore: [[seed.id, 1], [alias.id, 0.8]], warnings: [],
 		strategies: { references: true, citations: true, related: true },

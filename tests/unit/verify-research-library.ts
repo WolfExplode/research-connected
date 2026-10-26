@@ -98,11 +98,11 @@ export async function verifyResearchLibrary(): Promise<void> {
 		assert.equal(bookmarked.local.bookmark, true);
 		assert.equal(keeper.calls[0]!.args[1], "-", "metadata goes on stdin, not the command line");
 		assert.deepEqual(JSON.parse(keeper.calls[0]!.input), { title: "A new paper", doi: "10.1234/new", openalex: "W5", authors: ["A. Author"], year: 2020, abstract: "", note: null, files: [] });
-		// An existing note's bookmark is a frontmatter edit that keeps a legacy choice when asked to.
-		const legacy = vault({ "Research/Papers/Old.md": { type: "source", doi: "10.1234/old", favorite: false } });
+		// An existing note's bookmark is a frontmatter edit, not a CLI call.
+		const legacy = vault({ "Research/Papers/Old.md": { type: "source", doi: "10.1234/old", bookmark: false } });
 		const existing = track(new ResearchLibrary(legacy, tools(() => ({})), () => settings));
-		await existing.bookmark(paper({ doiUrl: "10.1234/old" }), true, { onlyIfMissing: true, source: "Graph" });
-		assert.deepEqual(legacy.props.get("Research/Papers/Old.md"), { type: "source", doi: "10.1234/old", bookmark: false, discovery_sources: ["Graph"] });
+		await existing.bookmark(paper({ doiUrl: "10.1234/old" }), true);
+		assert.deepEqual(legacy.props.get("Research/Papers/Old.md"), { type: "source", doi: "10.1234/old", bookmark: true });
 
 		// SPECTER2: one cached read per unseen DOI, then only real downloads; a failure pauses for 15 minutes.
 		let now = 1_000_000;

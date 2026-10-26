@@ -19,6 +19,4 @@ export interface PaperLibrary {
 	save(paper: PaperNode): Promise<LibraryPaperState>;
 	bookmarks(): LibraryBookmark[];
 	open(note: string): void;
-	/** Import old project bookmarks without overriding a choice already stored in a note. */
-	migrateBookmark(paper: PaperNode, source: string, reading?: ReadingStatus): Promise<void>;
 }

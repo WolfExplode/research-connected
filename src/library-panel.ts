@@ -30,7 +30,7 @@ export interface LibraryAvailability {
 export interface PaperLibraryService {
 	read(paper: PaperNode): LibraryAvailability;
 	save?(paper: PaperNode): Promise<LibraryAvailability>;
-	bookmark?(paper: PaperNode, value: boolean, options?: { onlyIfMissing?: boolean; source?: string; reading?: string }): Promise<LibraryAvailability>;
+	bookmark?(paper: PaperNode, value: boolean): Promise<LibraryAvailability>;
 	check(paper: PaperNode, options: { provider?: string; local?: boolean; refresh?: boolean }): Promise<LibraryAvailability>;
 	prefetch?(papers: readonly PaperNode[]): void;
 	/** Returns cached evidence; the host may schedule background downloads and notify on completion. */
