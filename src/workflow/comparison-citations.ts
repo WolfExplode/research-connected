@@ -11,10 +11,13 @@ export interface CitationComparisonResult { graph: SimilarityGraph; failed: numb
 export function createComparisonCitations(client: () => OpenAlexClient) {
 	const cache = new Map<string, References | null>();
 	return async (graph: SimilarityGraph): Promise<CitationComparisonResult> => {
-		const key = (paper: PaperNode): string => /^(W\d+)$/i.test(paper.id) ? paper.id.toUpperCase()
-			: normalizeDoi(paper.doiUrl) || shortId(paper.openAlexUrl);
-		const wanted = new Map(graph.nodes.filter(paper => !graph.referenceLists.get(paper.id)?.length)
-			.map(paper => [key(paper), paper]).filter(([id]) => Boolean(id)) as [string, PaperNode][]);
+		const key = (paper: PaperNode): string => /^W\d+$/i.test(paper.id) ? paper.id.toUpperCase()
+			: shortId(paper.openAlexUrl) || normalizeDoi(paper.doiUrl) || "";
+		const wanted = new Map<string, PaperNode[]>();
+		for (const paper of graph.nodes) {
+			const lookup = key(paper);
+			if (lookup && !graph.referenceLists.get(paper.id)?.length) wanted.set(lookup, [...(wanted.get(lookup) ?? []), paper]);
+		}
 		const missing = [...wanted.keys()].filter(id => !cache.has(id));
 		const ids = missing.filter(id => /^W\d+$/i.test(id));
 		let failed = 0;
@@ -48,9 +51,9 @@ export function createComparisonCitations(client: () => OpenAlexClient) {
 			if (remote && !paper.recordsSeparated) aliases.set(remote, paper.id);
 		}
 		const lists = new Map(graph.referenceLists);
-		for (const [lookup, paper] of wanted) {
+		for (const [lookup, papers] of wanted) {
 			const value = cache.get(lookup);
-			if (value) lists.set(paper.id, value.refs);
+			if (value) for (const paper of papers) lists.set(paper.id, value.refs);
 		}
 		const normalized = new Map([...lists].map(([id, refs]) => [id, refs.map(ref => aliases.get(ref) ?? ref)]));
 		const references = new Map([...normalized].map(([id, refs]) => [id, new Set(refs)]));
@@ -59,6 +62,10 @@ export function createComparisonCitations(client: () => OpenAlexClient) {
 		const model = buildSimilarity({ ids: graph.nodes.map(paper => paper.id), seedId: seed.id, references, contexts });
 		// The general layout builder adds weak fallback links for isolates. They are not citation evidence.
 		const edges = model.edges.filter(edge => edge.sharedRefs > 0 || edge.coCitedBy > 0 || edge.direct !== "none");
+		const pairs = new Set(edges.map(edge => [edge.source, edge.target].sort().join("\t")));
+		for (const edge of graph.edges) {
+			if ((edge.sharedRefs > 0 || edge.coCitedBy > 0 || edge.direct !== "none") && !pairs.has([edge.source, edge.target].sort().join("\t"))) edges.push(edge);
+		}
 		return { graph: { ...graph, referenceLists: normalized, edges }, failed };
 	};
 }

@@ -32,7 +32,20 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 	const payload = (question: string, title: string): DiscoveryPayload => ({ engine: "asreview", mode: "rank", question, papers: [{ title, note: "Research/Papers/Result.md", priority: 85, rank: 1 }] });
 	try {
 		const canvas = root.querySelector("canvas");
-		mode("rank"); run();
+		mode("rank");
+		const count = root.querySelector<HTMLInputElement>('input[aria-label="Discovery paper limit"]')!;
+		const presets = select("Choose discovery paper limit preset");
+		check(count.type === "number" && count.value === "30" && count.closest(".cpo-count-field"), "discovery uses the shared editable Show control");
+		count.value = "17"; count.dispatchEvent(new Event("change"));
+		check(Number(count.value) === 17, "discovery accepts a custom count");
+		count.value = "500"; count.dispatchEvent(new Event("change"));
+		check(Number(count.value) === 100, "custom discovery counts respect the workflow limit");
+		count.value = ""; count.dispatchEvent(new Event("change"));
+		check(Number(count.value) === 30, "empty counts restore the workflow default");
+		presets.value = "50"; presets.dispatchEvent(new Event("change"));
+		check(Number(count.value) === 50 && presets.value === "", "presets update the editable count and reset the arrow");
+		run();
+		check(count.disabled && presets.disabled, "both count controls disable during discovery");
 		check(root.querySelector<HTMLButtonElement>('[data-layout="radial"]')?.disabled, "screening priorities must not be presented as similarity distances");
 		for (const element of Array.from(root.querySelectorAll<HTMLElement>(".cpo-explore-tools [hidden]"))) check(getComputedStyle(element).display === "none", "irrelevant method controls must be visually hidden");
 		check(requests[0]?.request.question === first, "ranking must inherit the workspace question");
@@ -41,6 +54,7 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 		check(!root.textContent?.includes("Stale result from previous question"), "late results must not cross question boundaries");
 		run(); requests[1]!.resolve(payload(second, "Current ranked paper")); await tick();
 		check(root.querySelector(".cpo-detail")?.textContent?.includes("ASReview") || root.textContent?.includes("ASReview priority percentile"), "ranking must appear in the main details panel");
+		check(!count.disabled && !presets.disabled, "both count controls recover after discovery");
 		check(root.querySelector("canvas") === canvas && root.querySelectorAll("canvas").length === 1, "discovery must reuse the main canvas");
 		check(root.querySelector<HTMLElement>(".cpo-project-group:not(.cpo-question-group)")?.hidden, "citation graph controls must be hidden for local results");
 		check(root.querySelector<HTMLInputElement>(".cpo-diversify-results")?.disabled, "diversity must be disabled for local discovery results");
@@ -54,7 +68,7 @@ export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<strin
 		check(root.textContent?.includes("PaperQA2 retrieval rank: 1"), "PDF retrieval must use the same details panel");
 		mode("rank"); check(requests.length === 4 && root.textContent?.includes("Current ranked paper"), "switching methods must reuse session results");
 		handle.openDiscovery({ question: first, mode: "rank" }); mode("citation");
-		check(select("Citation graph").value === "W1", "returning to citation mode must restore its graph");
+		check(root.querySelector<HTMLSelectElement>(".cpo-project-group:not(.cpo-question-group) > .cpo-project-select:not(.cpo-view-select)")!.value === "W1", "returning to citation mode must restore its graph");
 		check(JSON.stringify(settings.researchProjects.W1!.snapshot?.nodes) === JSON.stringify(snapshot.nodes), "local results must never overwrite the citation snapshot");
 		check(networkCalls === 0, "local mode switches must not fetch citation data");
 		handle.openDiscovery({ payload: { engine: "asreview", mode: "similar", scoring: "specter2+words-v1",

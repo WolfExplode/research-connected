@@ -1,3 +1,6 @@
+import { createCountControl } from "./count-control";
+import { createInfoBar, graphInfo } from "./info-bar";
+import { setHoverHint } from "./hover-hint";
 import { ReadingSaveError, readingChangePending, readingChangesPending, saveReadingState } from "./workflow/reading-state";
 import { createProjectSave } from "./workflow/project-save";
 import { createComparisonCitations } from "./workflow/comparison-citations";
@@ -37,7 +40,6 @@ import {
 	expandAround,
 	loadNeighborhood,
 	restoreGraftedMembers,
-	type LoadWarning,
 	type SimilarityGraph,
 } from "./neighborhood";
 import { OpenAlexClient, type GetJson } from "./openalex";
@@ -104,20 +106,12 @@ const STAGE_TEXT: Record<"resolving" | "fetching" | "scoring" | "searching", str
 	searching: tr("正在搜索 OpenAlex…", "Searching OpenAlex…"),
 };
 
-const WARNING_TEXT: Record<LoadWarning, string> = {
-	references: tr("参考文献不可用", "References unavailable"),
-	citations: tr("施引文献不可用", "Citing papers unavailable"),
-	related: tr("相关论文不可用", "Related papers unavailable"),
-	details: tr("参考文献数据不完整", "Reference data incomplete"),
-	crosscheck: tr("Semantic Scholar 核对未完成", "Semantic Scholar check incomplete"),
-};
-
 /** Pane UI shared by the Obsidian view and the browser preview. */
 export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle {
 	const saveReading = (paper: PaperNode, seedId: string, reading: ReadingStatus, previous: ReadingStatus, source: string): Promise<void> =>
 		saveReadingState({ projects: deps.getSettings().researchProjects, seedId, paper, reading, previous,
 			persist: () => deps.persistSettings ? deps.persistSettings() : deps.stagePaper?.(paper, seedId, source), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
-			status.textContent = error instanceof Error ? error.message : tr("阅读状态保存失败", "Could not save reading status");
+			infoBar.notify(error instanceof Error ? error.message : tr("阅读状态保存失败", "Could not save reading status"), "error");
 			throw error;
 		});
 
@@ -142,13 +136,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	workspaceToggles.setAttribute("aria-label", tr("工作区菜单", "Workspace menus"));
 	const questionToggle = el(workspaceToggles, "button", "cpo-workspace-toggle");
 	questionToggle.type = "button";
-	questionToggle.title = tr("研究问题", "Question");
+	setHoverHint(questionToggle, tr("研究问题", "Question"));
 	questionToggle.setAttribute("aria-label", tr("研究问题", "Question"));
 	questionToggle.setAttribute("aria-expanded", "false");
 	questionToggle.append(createChromeIcon("note"));
 	const graphToggle = el(workspaceToggles, "button", "cpo-workspace-toggle");
 	graphToggle.type = "button";
-	graphToggle.title = tr("引用图谱", "Citation graph");
+	setHoverHint(graphToggle, tr("引用图谱", "Citation graph"));
 	graphToggle.setAttribute("aria-label", tr("引用图谱", "Citation graph"));
 	graphToggle.setAttribute("aria-expanded", "false");
 	graphToggle.append(createChromeIcon("project"));
@@ -183,14 +177,15 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const sourcePaperPath = (): string => sourcePaperPaths.get(sourcePaper.value.trim()) ?? sourcePaper.value.trim();
 	const pdfLabel = el(exploreTools, "label", "cpo-explore-field cpo-explore-query");
 	const pdfQuery = el(pdfLabel, "input"); pdfQuery.type = "search"; pdfQuery.placeholder = tr("全文查询", "PDF query"); pdfQuery.setAttribute("aria-label", tr("全文查询", "PDF query"));
-	const limitLabel = el(exploreTools, "label", "cpo-explore-field");
-	const discoveryLimit = el(limitLabel, "select"); discoveryLimit.setAttribute("aria-label", "Discovery paper limit");
-	for (const limit of [30, 10, 50, 100]) discoveryLimit.append(createEl("option", { value: String(limit), text: String(limit) }));
+	const discoveryCount = createCountControl({ label: "Discovery paper limit", presetLabel: "Choose discovery paper limit preset",
+		initial: 30, max: 100, presets: [10, 30, 50, 100],
+		onChange: () => { if (discoveryPayload) displayDiscovery(discoveryPayload); } });
+	const limitLabel = discoveryCount.element, discoveryLimit = discoveryCount.input;
+	exploreTools.append(limitLabel);
 	const runDiscovery = el(exploreTools, "button", "cpo-primary", tr("筛选论文", "Rank papers")); runDiscovery.type = "button";
 	const indexPdfs = el(exploreTools, "button", "cpo-ghost", tr("索引前 12 篇 PDF", "Index top 12 PDFs")); indexPdfs.type = "button";
 	indexPdfs.classList.add("cpo-index-pdfs");
-	indexPdfs.title = tr("索引前 12 篇 PDF", "Index top 12 PDFs");
-	indexPdfs.setAttribute("aria-label", indexPdfs.title);
+	setHoverHint(indexPdfs, tr("索引前 12 篇 PDF", "Index top 12 PDFs"));
 	indexPdfs.replaceChildren(createChromeIcon("refresh"));
 	const projectGroup = el(workspaceControls, "div", "cpo-workspace-menu cpo-project-group");
 	projectGroup.hidden = true;
@@ -209,13 +204,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	});
 	const projectSelect = el(projectGroup, "select", "cpo-project-select");
 	projectSelect.setAttribute("aria-label", tr("引用图谱", "Citation graph"));
-	projectSelect.title = tr("选择此问题的图谱，或关联已有图谱", "Choose a graph for this question, or link an existing graph");
+	setHoverHint(projectSelect, tr("选择此问题的图谱，或关联已有图谱", "Choose a graph for this question, or link an existing graph"));
 	const viewGroup = el(projectGroup, "div", "cpo-project-group cpo-view-group");
 	const viewLabel = el(viewGroup, "span", "cpo-project-label", tr("视图", "View"));
 	viewLabel.prepend(createChromeIcon("views"));
 	const viewSelect = el(viewGroup, "select", "cpo-project-select cpo-view-select");
 	viewSelect.setAttribute("aria-label", tr("保存的视图", "Saved views"));
-	viewSelect.title = tr("恢复保存的视图", "Restore saved view");
+	setHoverHint(viewSelect, tr("恢复保存的视图", "Restore saved view"));
 	viewSelect.disabled = true;
 	const viewNameInput = el(viewGroup, "input", "cpo-project-name-input");
 	viewNameInput.placeholder = tr("新视图名称", "New view name");
@@ -240,7 +235,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const libraryButton = el(projectGroup, "button", "cpo-ghost cpo-library-open");
 	libraryButton.type = "button";
 	libraryButton.append(createChromeIcon("bookmark"), document.createTextNode(tr("已保存论文", "Saved papers")));
-	libraryButton.title = tr("暂存与排除", "Saved and excluded papers");
+	setHoverHint(libraryButton, tr("暂存与排除", "Saved and excluded papers"));
 	const setWorkspaceMenu = (menu: "question" | "graph" | null): void => {
 		const showQuestion = menu === "question";
 		const showGraph = menu === "graph";
@@ -256,7 +251,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 
 	const status = createEl("p");
 	status.className = "cpo-status";
-	status.textContent = tr("从一篇种子论文开始。", "Start with a seed paper.");
+	const infoBar = createInfoBar(status);
+	infoBar.notify(tr("从一篇种子论文开始。", "Start with a seed paper."));
 	status.setAttribute("role", "status");
 	const statusIsExternal = Boolean(deps.statusHost);
 	if (deps.statusHost) deps.statusHost.replaceChildren(status);
@@ -276,12 +272,12 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	undoButton.type = "button";
 	undoButton.hidden = true;
 	undoButton.disabled = true;
-	undoButton.title = tr("撤销（Ctrl+Z）", "Undo (Ctrl+Z)");
+	setHoverHint(undoButton, tr("撤销（Ctrl+Z）", "Undo (Ctrl+Z)"));
 	const redoButton = el(statusBar, "button", "cpo-text-btn cpo-undo", tr("重做", "Redo"));
 	redoButton.type = "button";
 	redoButton.hidden = true;
 	redoButton.disabled = true;
-	redoButton.title = tr("重做（Ctrl+Shift+Z）", "Redo (Ctrl+Shift+Z)");
+	setHoverHint(redoButton, tr("重做（Ctrl+Shift+Z）", "Redo (Ctrl+Shift+Z)"));
 	const rail =el(body, "aside", "cpo-rail");
 	const layoutHost = el(rail, "div", "cpo-rail-layouts");
 	const scrubHost = el(rail, "div", "cpo-rail-scrub");
@@ -404,6 +400,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		root.classList.toggle("is-citation-similarity", layoutMode === "radial" && similarityKind === "citations");
 		const scoped = similarityExplorer.update(graph, storedText, exploreMode === "citation" && layoutMode === "radial", similarityKind);
 		syncSubmitAction();
+		syncInfoBar();
 		if (scoped) {
 			comparison = scoped.scores;
 			map.adoptGraph(scoped.graph.nodes, scoped.graph.edges, comparison[similarityKind]);
@@ -417,6 +414,16 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			comparison = comparisonData(graph, storedText);
 			map.setComparisonScores(layoutMode === "radial" ? comparison[similarityKind] : graph.seedScore, similarityKind);
 		} else if (discoveryGraph) map.setComparisonScores(exploreMode === "similar" && similarityKind === "citations" ? new Map<string, number>() : discoveryGraph.seedScore, exploreMode === "similar" ? similarityKind : "text");
+	}
+	function syncInfoBar(): void {
+		const key = `${exploreMode}:${tab}:${layoutMode}:${similarityKind}:${similarityExplorer.contextKey}:${activeQuestion}:${exploreMode === "similar" ? sourcePaper.value : ""}:${graph?.nodes.find(p => p.isSeed)?.id ?? ""}`;
+		if (tab !== "graph") { infoBar.context(key, { kind: "summary", text: tabTitles[tab] }); return; }
+		if (exploreMode !== "citation") {
+			const label = exploreMode === "rank" ? tr("论文筛选", "Paper screening") : exploreMode === "search" ? tr("PDF 搜索", "PDF search") : tr("相关论文", "Related papers");
+			const guidance = exploreMode === "similar" && !sourcePaper.value.trim() ? tr("选择来源论文。", "Choose a source paper.") : exploreMode !== "similar" && !activeQuestion ? tr("先选择研究问题。", "Choose a research question first.") : tr("设置条件后运行。", "Choose criteria and run.");
+			infoBar.context(key, { kind: "summary", text: discoveryGraph ? `${label} · ${discoveryGraph.rows.size}/${discoveryGraph.total} ${tr("篇论文", "papers")}` : `${label} · ${guidance}` });
+		} else if (similarityExplorer.status) infoBar.context(key, similarityExplorer.status);
+		else infoBar.context(key, graphInfo(graph, layoutMode));
 	}
 	function loadStoredText(): void {
 		const revision = ++storedTextRevision, target = graph;
@@ -460,6 +467,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 	const setBusy = (busy: boolean): void => {
 		graphBusy = busy;
+		if (!busy) infoBar.clearProgress();
 		input.disabled = busy;
 		reload.disabled = busy || !graph;
 		surface.diversifyResults.disabled = busy || exploreMode !== "citation" || layoutMode === "radial";
@@ -482,6 +490,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	const paintLists = (): void => {
+		syncInfoBar();
 		releaseLibraryMenu?.(); releaseLibraryMenu = undefined;
 		evidenceHeading.textContent = exploreMode !== "citation" && tab === "graph" ? tr("论文详情与检索结果", "Paper details & results") : tabTitles[tab] ?? tabTitles.graph;
 		libraryButton.setAttribute("aria-pressed", tab === "staged" || tab === "excluded" ? "true" : "false");
@@ -669,7 +678,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 						}
 						catch (error) {
 							reading.value = error instanceof ReadingSaveError ? error.reading : item.reading;
-							status.textContent = error instanceof Error ? error.message : tr("阅读状态保存失败，请重试", "Could not save reading status. Try again.");
+							infoBar.notify(error instanceof Error ? error.message : tr("阅读状态保存失败，请重试", "Could not save reading status. Try again."), "error");
 						}
 						finally { reading.disabled = false; }
 					};
@@ -678,7 +687,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					remove.onclick = async () => {
 						updateProjectPaperState(projects, item.seedId, item.paper, { staged: false });
 						try { await deps.stagePaper?.(item.paper, item.seedId, item.source); paintStaged(); }
-						catch { updateProjectPaperState(projects, item.seedId, item.paper, { staged: true }); status.textContent = tr("暂存状态保存失败，请重试", "Could not save the saved-paper state. Try again."); }
+						catch { updateProjectPaperState(projects, item.seedId, item.paper, { staged: true }); infoBar.notify(tr("暂存状态保存失败，请重试", "Could not save the saved-paper state. Try again."), "error"); }
 					};
 				});
 			}
@@ -1028,7 +1037,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!paper.isSeed) {
 			const compare = el(detail, "button", "cpo-ghost", tr("设为种子论文", "Set as seed paper"));
 			compare.type = "button";
-			compare.title = tr("以这篇论文重新构建相似度图谱", "Rebuild the similarity map around this paper");
+			setHoverHint(compare, tr("以这篇论文重新构建相似度图谱", "Rebuild the similarity map around this paper"));
 			compare.addEventListener("click", () => {
 				chrome?.setLayout("radial");
 				input.value = paper.id;
@@ -1042,7 +1051,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const project = deps.getSettings().researchProjects[seedId];
 		paintIdentitySources(detail, paper, deps.openExternal, () => {
 			if (!graph) return;
-			if (graph.nodes.length + (paper.records?.length ?? 1) - 1 > deps.getSettings().maxNodes) { status.textContent = tr("分开记录将超过节点上限，请先移除其他论文", "Splitting these records would exceed the node limit. Remove another paper first."); return; }
+			if (graph.nodes.length + (paper.records?.length ?? 1) - 1 > deps.getSettings().maxNodes) { infoBar.notify(tr("分开记录将超过节点上限，请先移除其他论文", "Splitting these records would exceed the node limit. Remove another paper first."), "error"); return; }
 			const next = separateWorkRecords(graph, paper);
 			if (project) reconcileProjectIdentity(project, next);
 			applyEdit(next, tr("已保持来源记录分开", "Source records are now kept separate"), undefined, true);
@@ -1128,7 +1137,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	};
 
 	const incompleteCitationChecks = new WeakSet<SimilarityGraph>();
-	surface.apiStatus.read = () => graphApiStatus(graph, deps.libraryBridge?.(), similarityExplorer.apiError, Boolean(graph && incompleteCitationChecks.has(graph)));
+	surface.apiStatus.read = () => exploreMode === "citation" ? graphApiStatus(graph, layoutMode === "radial" && similarityKind === "text" ? deps.libraryBridge?.() : null, similarityExplorer.apiError, Boolean(graph && incompleteCitationChecks.has(graph))) : [];
 	const nodePopover = mountNodePopover(stage, canvas, map, () => !body.classList.contains("is-sidebar-collapsed"));
 	map.onSelect = (paper) => {
 		nodePopover.show(paper, similarityKind, comparison[similarityKind].get(paper?.id ?? ""), comparison.details.get(paper?.id ?? ""), deps.libraryBridge?.()); showDetail(paper); scheduleProjectSave(); };
@@ -1151,10 +1160,10 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		expandItem.hidden = scopedActive;
 		nodeMenu.querySelector<HTMLElement>(".cpo-node-menu-sep")?.toggleAttribute("hidden", scopedActive);
 		deleteItem.disabled = paper.isSeed;
-		deleteItem.title = paper.isSeed ? tr("种子不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project");
+		setHoverHint(deleteItem, paper.isSeed ? tr("种子不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project"));
 		seedItem.disabled = paper.isSeed;
 		seedItem.textContent = tr("设为种子论文", "Set as seed paper");
-		seedItem.title = paper.isSeed ? tr("已是种子", "Already the seed") : tr("以这篇重建整图", "Rebuild graph with this paper as seed");
+		setHoverHint(seedItem, paper.isSeed ? tr("已是种子", "Already the seed") : tr("以这篇重建整图", "Rebuild graph with this paper as seed"));
 		paintLocalPaperAction(nodeMenu, paper, deps.libraryBridge?.(), true);
 		nodeMenu.dataset.paperId = paper.id;
 		nodeMenu.hidden = false;
@@ -1246,7 +1255,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			? tr("本地发现结果不使用多样性筛选。", "Local discovery results do not use diversity selection.")
 			: layoutMode === "radial" ? tr("相似度搜索直接按文本分数排序。多样化选项用于平面和时间视图的引用邻居筛选。", "Similarity search ranks directly by text score. Diversity applies to citation-neighbor selection in Planar and Timeline.")
 			: tr("减少重复候选，为不同论文留出空间。关闭后移除多样性惩罚。更改后重新构建引用图谱。", "Make room for different papers by reducing redundant candidates. Turn off to remove the diversity penalty. Changes rebuild the citation graph.");
-		surface.diversifyResults.parentElement!.title = surface.diversityHint.textContent ?? "";
+		setHoverHint(surface.diversifyResults.parentElement!, surface.diversityHint.textContent ?? "");
 		chrome?.setCitationSimilarityAvailable(exploreMode === "citation" || exploreMode === "similar");
 		chrome?.setSimilarityAvailable(exploreMode === "citation" || exploreMode === "similar");
 		const local = exploreMode !== "citation";
@@ -1264,7 +1273,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		stage.setAttribute("aria-busy", String(discoveryBusy));
 		const canRun = !!deps.libraryBridge?.()?.discovery && (exploreMode === "similar" ? !!sourcePaper.value.trim() : !!activeQuestion);
 		runDiscovery.disabled = indexPdfs.disabled = discoveryBusy || !canRun;
-		sourcePaper.disabled = pdfQuery.disabled = discoveryLimit.disabled = discoveryBusy;
+		sourcePaper.disabled = pdfQuery.disabled = discoveryBusy;
+		discoveryCount.setDisabled(discoveryBusy);
 		for (const option of Array.from(method.options)) if (option.value !== "citation") option.disabled = !deps.libraryBridge?.()?.discovery;
 	}
 	function clearDiscoverySurface(): void {
@@ -1275,6 +1285,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		emptyTitle.textContent = tr("探索研究问题", "Explore your research question");
 		messageText.textContent = activeQuestion || exploreMode === "similar" ? tr("设置条件后运行，结果会显示在此图谱中。", "Run the selected method to show papers on this graph.") : tr("先在上方选择一个研究问题。", "Choose a research question above first.");
 		showDetail(null);
+		syncInfoBar();
 	}
 	function discoveryKey(mode: ExploreMode): string { return `${activeQuestion}\n${mode}\n${mode === "similar" ? sourcePaperPath() : ""}`; }
 	function setExploreMode(mode: ExploreMode): void {
@@ -1298,13 +1309,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			map.setColorMode("graph"); clearDiscoverySurface();
 			const cached = discoveryCache.get(discoveryKey(mode));
 			if (cached) displayDiscovery(cached);
-			else status.textContent = tr("选择条件后运行本地探索。", "Run local discovery when ready.");
+			else infoBar.notify(tr("选择条件后运行本地探索。", "Run local discovery when ready."));
 		}
-		setBusy(false); syncExploreControls(); map.resize();
+		setBusy(false); syncExploreControls(); syncInfoBar(); map.resize();
 	}
 	function displayDiscovery(payload: DiscoveryPayload): void {
 		const next = buildDiscoveryGraph(payload, Number(discoveryLimit.value));
 		discoveryPayload = payload; discoveryGraph = next;
+		infoBar.clearProgress();
 		discoveryCache.set(discoveryKey(exploreMode), payload);
 		if (payload.mode === "search") pdfQuery.value = payload.query ?? "";
 		map.setGraph(next.nodes, next.edges, next.seedScore); map.setColorMode("graph");
@@ -1316,8 +1328,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		empty.hidden = next.nodes.length > 1;
 		if (!empty.hidden) { emptyTitle.textContent = tr("没有匹配的论文", "No matching papers"); messageText.textContent = tr("尝试不同的查询、来源论文或问题。", "Try a different query, source paper or question."); }
 		showDetail(next.nodes.find(paper => !paper.isSeed) ?? next.nodes[0] ?? null);
-		const engine = payload.mode === "rank" ? "ASReview" : payload.mode === "search" ? "PaperQA2" : tr("文本相似度", "Text similarity");
-		status.textContent = `${engine} · ${next.rows.size}/${next.total} ${tr("篇论文", "papers")}${payload.mode === "search" && payload.query ? ` · ${payload.query}` : ""}`;
+		syncInfoBar();
 	}
 	async function generateDiscovery(index = false): Promise<void> {
 		const runner = deps.libraryBridge?.()?.discovery;
@@ -1328,14 +1339,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (index) { request.action = "index"; request.selection = discoveryCache.get(discoveryKey("rank"))?.papers; }
 		const revision = ++discoveryRevision;
 		discoveryBusy = true; syncExploreControls(); clearError();
-		status.textContent = index ? tr("正在索引选定 PDF…", "Indexing selected PDFs…") : tr("正在生成本地结果…", "Generating local results…");
+		infoBar.notify(index ? tr("正在索引选定 PDF…", "Indexing selected PDFs…") : tr("正在生成本地结果…", "Generating local results…"), "busy");
 		try {
 			const payload = await runner.run(request);
 			if (disposed || revision !== discoveryRevision) return;
-			if (index) status.textContent = tr(`已索引 ${payload.indexed} 篇 PDF，可以开始搜索。`, `${payload.indexed} PDFs indexed. Enter a query to search.`);
+			if (index) infoBar.notify(tr(`已索引 ${payload.indexed} 篇 PDF，可以开始搜索。`, `${payload.indexed} PDFs indexed. Enter a query to search.`), "success");
 			else displayDiscovery(payload);
-		} catch (error) { if (!disposed && revision === discoveryRevision) { showError(error instanceof Error ? error.message : String(error)); status.textContent = tr("本地探索失败，可重试。", "Local discovery failed. You can retry."); } }
-		finally { if (!disposed && revision === discoveryRevision) { discoveryBusy = false; syncExploreControls(); } }
+		} catch (error) { if (!disposed && revision === discoveryRevision) { showError(error instanceof Error ? error.message : String(error)); infoBar.notify(tr("本地探索失败，可重试。", "Local discovery failed. You can retry."), "error"); } }
+		finally { if (!disposed && revision === discoveryRevision) { discoveryBusy = false; infoBar.clearProgress(); syncExploreControls(); syncInfoBar(); } }
 	}
 	method.addEventListener("change", () => setExploreMode(method.value as ExploreMode));
 	runDiscovery.addEventListener("click", () => { void generateDiscovery(); });
@@ -1348,7 +1359,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		syncExploreControls();
 	});
 	pdfQuery.addEventListener("keydown", event => { if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); void generateDiscovery(); } });
-	discoveryLimit.addEventListener("change", () => { if (discoveryPayload) displayDiscovery(discoveryPayload); });
 
 	const persistProject = (current: SimilarityGraph): void => {
 		const seed = current.nodes.find((node) => node.isSeed);
@@ -1368,7 +1378,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		};
 		linkGraphToQuestion(project, activeQuestion);
 		void Promise.resolve(deps.saveProject(project)).catch((error) => {
-			status.textContent = error instanceof Error ? tr(`项目保存失败：${error.message}`, `Could not save project: ${error.message}`) : tr("项目保存失败", "Could not save the project");
+			infoBar.notify(error instanceof Error ? tr(`项目保存失败：${error.message}`, `Could not save project: ${error.message}`) : tr("项目保存失败", "Could not save the project"), "error");
 		});
 		refreshProjectSelect(seed.id);
 	};
@@ -1447,14 +1457,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!project || !snapshot) return;
 		flushProjectSave();
 		linkGraphToQuestion(project, activeQuestion);
-		void Promise.resolve(deps.saveProject?.(project)).catch(error => { status.textContent = String(error); });
+		void Promise.resolve(deps.saveProject?.(project)).catch(error => { infoBar.notify(String(error), "error"); });
 		deepDiveBatches = project.deepDives ?? [];
 		clearUndo();
 		generation += 1;
 		applyGraph(snapshot, project.currentView, false);
 		setBusy(false);
 		refreshProjectSelect(project.seedId);
-		status.textContent = tr(`已切换到研究项目「${project.name}」`, `Switched to research project “${project.name}”`);
 	});
 	function openSavedPaper(seedId: string, paper: PaperNode): void {
 		const project = deps.getSettings().researchProjects[seedId];
@@ -1464,7 +1473,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				const note = deps.lookupLiteratureNote?.(paper);
 				if (note && deps.openLiteratureNote) deps.openLiteratureNote(note.path);
 				else if (paper.doiUrl || paper.openAlexUrl) deps.openExternal(paper.doiUrl || paper.openAlexUrl);
-				else status.textContent = tr("此论文没有保存的图谱、匹配笔记或在线链接。", "No saved graph, matching note, or online link is available for this paper.");
+				else infoBar.notify(tr("此论文没有保存的图谱、匹配笔记或在线链接。", "No saved graph, matching note, or online link is available for this paper."), "error");
 				return;
 			}
 			flushProjectSave(); clearUndo(); generation++;
@@ -1483,7 +1492,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		flushProjectSave();
 		activeQuestion = nextQuestion;
 		deps.getSettings().activeQuestion = activeQuestion;
-		void Promise.resolve(deps.persistSettings?.()).catch(error => { status.textContent = String(error); });
+		void Promise.resolve(deps.persistSettings?.()).catch(error => { infoBar.notify(String(error), "error"); });
 		generation++; clearUndo(); hideResults(); hideNodeMenu(); clearError();
 		const project = graphsForQuestion(deps.getSettings().researchProjects, activeQuestion)[0];
 		const snapshot = project && restoreGraphSnapshot(project.snapshot);
@@ -1497,7 +1506,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			messageText.textContent = tr("筛选论文、搜索本地 PDF，或选择种子论文构建引用图谱。", "Rank papers, search local PDFs, or build a citation graph from a seed paper.");
 		}
 		setBusy(false); refreshProjectSelect(project?.seedId);
-		status.textContent = activeQuestion ? tr("研究问题已选定。", "Research question selected.") : tr("未关联问题的图谱", "Unassigned graphs");
+		infoBar.notify(activeQuestion ? tr("研究问题已选定。", "Research question selected.") : tr("未关联问题的图谱", "Unassigned graphs"));
 		if (previousMode !== "citation") { pdfQuery.value = ""; setExploreMode(previousMode); }
 	});
 
@@ -1523,7 +1532,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			return;
 		}
 		const name = renameProjectInput.value.trim();
-		if (!name) { status.textContent = tr("项目名称不能为空", "Project name cannot be empty"); renameProjectInput.focus(); return; }
+		if (!name) { infoBar.notify(tr("项目名称不能为空", "Project name cannot be empty"), "error"); renameProjectInput.focus(); return; }
 		project.name = name.slice(0, 120);
 		project.updatedAt = Date.now();
 		try {
@@ -1531,9 +1540,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			renameProjectInput.hidden = true;
 			renameProjectText.textContent = tr("重命名", "Rename");
 			refreshProjectSelect(project.seedId);
-			status.textContent = tr(`项目已重命名为「${project.name}」`, `Project renamed to “${project.name}”`);
+			infoBar.notify(tr(`项目已重命名为「${project.name}」`, `Project renamed to “${project.name}”`), "success");
 		} catch (error) {
-			status.textContent = error instanceof Error ? error.message : tr("项目名称保存失败", "Could not save the project name");
+			infoBar.notify(error instanceof Error ? error.message : tr("项目名称保存失败", "Could not save the project name"), "error");
 		}
 	};
 	renameProjectInput.addEventListener("keydown", (event) => {
@@ -1556,7 +1565,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			return;
 		}
 		const name = viewNameInput.value.trim();
-		if (!name) { status.textContent = tr("先输入视图名称", "Enter a view name first"); viewNameInput.focus(); return; }
+		if (!name) { infoBar.notify(tr("先输入视图名称", "Enter a view name first"), "error"); viewNameInput.focus(); return; }
 		const seedId = currentSeedId();
 		if (!seedId) return;
 		const prior = deps.getSettings().researchProjects[seedId];
@@ -1581,9 +1590,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			saveViewText.textContent = tr("保存视图", "Save view");
 			saveViewButton.disabled = !graph;
 			refreshViews();
-			status.textContent = tr(`已保存视图「${view.name}」`, `Saved view “${view.name}”`);
+			infoBar.notify(tr(`已保存视图「${view.name}」`, `Saved view “${view.name}”`), "success");
 		} catch (error) {
-			status.textContent = error instanceof Error ? error.message : tr("视图保存失败", "Could not save the view");
+			infoBar.notify(error instanceof Error ? error.message : tr("视图保存失败", "Could not save the view"), "error");
 		}
 	};
 
@@ -1636,7 +1645,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			selectedEdge = null;
 			showDetail(seed);
 		} else showDetail(next.nodes.find((node) => node.id === selectedId) ?? null);
-		status.textContent = tr(`${note} · ${next.nodes.length} 篇 · ${next.edges.length} 条关系`, `${note} · ${next.nodes.length} papers · ${next.edges.length} links`);
+		infoBar.notify(tr(`${note} · ${next.nodes.length} 篇 · ${next.edges.length} 条关系`, `${note} · ${next.nodes.length} papers · ${next.edges.length} links`), "success");
 		persistProject(next);
 	};
 	const restoreCheckpoint = (checkpoint: Checkpoint): boolean => {
@@ -1657,7 +1666,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const target = (direction === "undo" ? undoStack : redoStack).at(-1);
 		if (!target) return;
 		const current = captureCheckpoint();
-		if (!restoreCheckpoint(target)) { clearUndo(); status.textContent = tr("无法恢复图谱状态", "Could not restore the graph state"); return; }
+		if (!restoreCheckpoint(target)) { clearUndo(); infoBar.notify(tr("无法恢复图谱状态", "Could not restore the graph state"), "error"); return; }
 		if (direction === "undo") {
 			undoStack = undoStack.slice(0, -1);
 			if (current) redoStack = [...redoStack, current];
@@ -1666,7 +1675,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (current) undoStack = [...undoStack, current].slice(-UNDO_LIMIT);
 		}
 		updateUndoUi();
-		status.textContent = direction === "undo" ? tr("已撤销上一步图谱修改", "Undid the last graph change") : tr("已重做图谱修改", "Redid the graph change");
+		infoBar.notify(direction === "undo" ? tr("已撤销上一步图谱修改", "Undid the last graph change") : tr("已重做图谱修改", "Redid the graph change"), "success");
 	};
 	undoButton.addEventListener("click", () => stepHistory("undo"));
 	redoButton.addEventListener("click", () => stepHistory("redo"));
@@ -1714,7 +1723,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	const restoreExcludedPaper = (seedId: string, state: ProjectPaperState): void => {
 		if (!graph) return;
 		if (graph.nodes.length >= Math.min(300, deps.getSettings().maxNodes)) {
-			status.textContent = tr("已到节点上限，请先移除其他论文再恢复", "Node limit reached. Remove another paper before restoring.");
+			infoBar.notify(tr("已到节点上限，请先移除其他论文再恢复", "Node limit reached. Remove another paper before restoring."), "error");
 			return;
 		}
 		const next = graftNodes(graph, [state.paper], new Map());
@@ -1734,18 +1743,18 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!seedId) return;
 		const slots = Math.min(EXPAND_CAP, settings.maxNodes - graph.nodes.length);
 		if (slots <= 0) {
-			status.textContent = tr(`已到上限（${settings.maxNodes} 篇），先删几点再深挖`, `Node limit reached (${settings.maxNodes} papers). Remove a few before the deep dive.`);
+			infoBar.notify(tr(`已到上限（${settings.maxNodes} 篇），先删几点再深挖`, `Node limit reached (${settings.maxNodes} papers). Remove a few before the deep dive.`), "error");
 			return;
 		}
 		if (!beginDeepDive(seedId)) {
-			status.textContent = tr("这张图已有一轮深挖在进行，请稍后重试", "A deep dive is already running for this graph. Try again later.");
+			infoBar.notify(tr("这张图已有一轮深挖在进行，请稍后重试", "A deep dive is already running for this graph. Try again later."), "success");
 			return;
 		}
 		const token = generation;
 		const host = graph;
 		expanding = true;
 		expandItem.disabled = true;
-		status.textContent = tr(`正在从「${paper.title.slice(0, 24)}」扩展…`, `Expanding from “${paper.title.slice(0, 24)}”…`);
+		infoBar.notify(tr(`正在从「${paper.title.slice(0, 24)}」扩展…`, `Expanding from “${paper.title.slice(0, 24)}”…`), "busy");
 		try {
 			const oa = new OpenAlexClient(deps.getJson, { apiKey: settings.apiKey, contactEmail: settings.contactEmail });
 			const result = await expandAround(oa, host, paper, hiddenIds, settings, slots);
@@ -1762,7 +1771,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					result.filtered ? tr(`${result.filtered} 篇不符合筛选条件`, `${result.filtered} do not meet the filters`) : "",
 					result.overlaps ? tr(`${result.overlaps} 篇同时出现在参考与施引候选中`, `${result.overlaps} appear in both reference and citation candidates`) : "",
 				].filter(Boolean);
-				status.textContent = result.warnings.length ? result.warnings.join(tr("；", "; ")) : result.noMore ? tr("已读完当前可访问候选，没有更多文献", "All accessible candidates have been read; no more papers are available") : tr(`本轮没有新增文献${reasons.length ? `：${reasons.join("；")}` : "；候选页仍可继续读取"}`, `No papers added in this round${reasons.length ? `: ${reasons.join("; ")}` : "; more candidate pages can still be read"}`);
+				infoBar.notify(result.warnings.length ? result.warnings.join(tr("；", "; ")) : result.noMore ? tr("已读完当前可访问候选，没有更多文献", "All accessible candidates have been read; no more papers are available") : tr(`本轮没有新增文献${reasons.length ? `：${reasons.join("；")}` : "；候选页仍可继续读取"}`, `No papers added in this round${reasons.length ? `: ${reasons.join("; ")}` : "; more candidate pages can still be read"}`), "success");
 				return;
 			}
 			const directions = [tr(`参考 ${result.references}`, `References ${result.references}`), tr(`施引 ${result.citations}`, `Citing ${result.citations}`)];
@@ -1782,8 +1791,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			if (undoStack.length) undoStack[undoStack.length - 1]!.deepDives = previousBatches;
 		} catch (error) {
 			if (disposed || token !== generation || graph !== host) return;
-			status.textContent = error instanceof Error ? error.message : tr("深挖失败。", "Deep dive failed.");
+			infoBar.notify(error instanceof Error ? error.message : tr("深挖失败。", "Deep dive failed."), "error");
 		} finally {
+			infoBar.clearProgress();
 			endDeepDive(seedId);
 			expanding = false;
 			expandItem.disabled = false;
@@ -1836,9 +1846,8 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		scrubYear = restoreView?.scrubYear ?? null;
 		if (restoreView) restoreViewState(restoreView);
 		paintLists();
-		const notices = next.warnings.map(item => WARNING_TEXT[item]);
-		if (next.pagingLimited) notices.push(tr("采样仅限第一页", "Sample limited to first page"));
-		status.textContent = notices.join(" · ") || tr("就绪", "Ready");
+		infoBar.clearProgress();
+		syncInfoBar();
 		if (persist) persistProject(next);
 		refreshProjectSelect(seed?.id);
 		if (enrich) void enrichOpenCitations(next);
@@ -1885,7 +1894,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 	function restoreNamedView(view: SavedView): void {
 		restoreViewState(view);
 		scheduleProjectSave();
-		status.textContent = tr(`已恢复视图「${view.name}」`, `Restored view “${view.name}”`);
+		infoBar.notify(tr(`已恢复视图「${view.name}」`, `Restored view “${view.name}”`), "success");
 	}
 
 	const enrichOpenCitations = async (next: SimilarityGraph): Promise<void> => {
@@ -1917,10 +1926,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (failed) incompleteCitationChecks.add(next);
 		else incompleteCitationChecks.delete(next);
 		surface.apiStatus.refresh();
-		if (failed) {
-			const notice = tr("OpenCitations 核对未完成", "OpenCitations check incomplete");
-			status.textContent = status.textContent === tr("就绪", "Ready") ? notice : `${status.textContent} · ${notice}`;
-		}
+
 		persistProject(next);
 	};
 	const client = (): OpenAlexClient => {
@@ -1943,14 +1949,14 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		if (!refresh) {
 			const matches = matchingSeedProjects(deps.getSettings().researchProjects, target);
 			if (matches.length > 1 && !(target.kind === "openalex" && deps.getSettings().researchProjects[shortId(target.value)])) {
-				status.textContent = tr(`这篇作品有 ${matches.length} 个独立研究项目，请从项目列表选择：${matches.map((project) => project.name).join("、")}`, `This work has ${matches.length} independent research projects. Choose from the project list: ${matches.map((project) => project.name).join(", ")}`);
+				infoBar.notify(tr(`这篇作品有 ${matches.length} 个独立研究项目，请从项目列表选择：${matches.map((project) => project.name).join("、")}`, `This work has ${matches.length} independent research projects. Choose from the project list: ${matches.map((project) => project.name).join(", ")}`), "error");
 				projectSelect.focus(); return;
 			}
 			const project = savedProjectForSeed(deps.getSettings().researchProjects, target);
 			const snapshot = project && restoreGraphSnapshot(project.snapshot);
 			if (snapshot) {
 				linkGraphToQuestion(project, activeQuestion);
-				void Promise.resolve(deps.saveProject?.(project)).catch(error => { status.textContent = String(error); });
+				void Promise.resolve(deps.saveProject?.(project)).catch(error => { infoBar.notify(String(error), "error"); });
 				clearError();
 				hideResults();
 				if (currentSeedId() !== project.seedId) {
@@ -1960,7 +1966,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					applyGraph(snapshot, project.currentView, false, false);
 				}
 				setBusy(false);
-				status.textContent = tr(`已打开研究项目「${project.name}」；需要更新数据请使用重新加载`, `Opened research project “${project.name}”; use Reload to update data`);
 				return;
 			}
 		}
@@ -1971,7 +1976,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		hideResults();
 		empty.hidden = true;
 		emptyTitle.hidden = true;
-		status.textContent = STAGE_TEXT.resolving;
+		infoBar.notify(STAGE_TEXT.resolving, "busy");
 		try {
 			const settings = deps.getSettings();
 			const oa = client();
@@ -1981,7 +1986,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				settings,
 				(stage) => {
 					if (token !== generation) return;
-					status.textContent = STAGE_TEXT[stage];
+					infoBar.notify(STAGE_TEXT[stage], "busy");
 				},
 				reconcileSource(),
 				new CrossrefClient(deps.getJson, settings.contactEmail),
@@ -1999,26 +2004,26 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			applyGraph(next, undefined, extras.length === 0, extras.length === 0);
 			if (extras.length === 0) return;
 			const displayed = graph!;
-			status.textContent = tr("正在恢复深挖并入的文献…", "Restoring papers added through deep dives…");
+			infoBar.notify(tr("正在恢复深挖并入的文献…", "Restoring papers added through deep dives…"), "busy");
 			const restored = await restoreGraftedMembers(oa, displayed, extras, settings, excluded, origins);
 			if (disposed || token !== generation || graph !== displayed) return;
 			if (restored.failed && project?.snapshot) {
 				const previous = restoreGraphSnapshot(project.snapshot);
 				if (previous) {
 					applyGraph(previous, project.currentView, false, false);
-					status.textContent = tr(`更新未完成：${restored.failed} 篇深挖论文读取失败，已保留上次保存的图谱`, `Update incomplete: ${restored.failed} deep-dive papers could not be loaded; previous graph retained`);
+					infoBar.notify(tr(`更新未完成：${restored.failed} 篇深挖论文读取失败，已保留上次保存的图谱`, `Update incomplete: ${restored.failed} deep-dive papers could not be loaded; previous graph retained`), "error");
 					return;
 				}
 			}
 			if (restored.added > 0 || restored.graph !== displayed) {
 				applyGraph(restored.graph, undefined, !restored.failed);
-				status.textContent = tr(`已恢复 ${restored.added} 篇深挖文献${restored.displaced ? `，为深挖内容腾出 ${restored.displaced} 个名额` : ""}`, `Restored ${restored.added} deep-dive papers${restored.displaced ? `; freed ${restored.displaced} slots for deep-dive papers` : ""}`);
+				infoBar.notify(tr(`已恢复 ${restored.added} 篇深挖文献${restored.displaced ? `，为深挖内容腾出 ${restored.displaced} 个名额` : ""}`, `Restored ${restored.added} deep-dive papers${restored.displaced ? `; freed ${restored.displaced} slots for deep-dive papers` : ""}`), "success");
 			} else {
 				persistProject(displayed);
 				if (!restored.failed) void enrichOpenCitations(displayed);
 			}
-			if (restored.failed) status.textContent = tr(`已恢复 ${restored.added} 篇深挖文献；另有 ${restored.failed} 篇读取失败，可稍后重试`, `Restored ${restored.added} deep-dive papers; ${restored.failed} could not be loaded and can be retried later`);
-			else if (restored.omitted) status.textContent = tr(`已恢复 ${restored.added} 篇深挖文献；${restored.omitted} 篇超过节点上限，未能放入`, `Restored ${restored.added} deep-dive papers; ${restored.omitted} exceeded the node limit`);
+			if (restored.failed) infoBar.notify(tr(`已恢复 ${restored.added} 篇深挖文献；另有 ${restored.failed} 篇读取失败，可稍后重试`, `Restored ${restored.added} deep-dive papers; ${restored.failed} could not be loaded and can be retried later`), "error");
+			else if (restored.omitted) infoBar.notify(tr(`已恢复 ${restored.added} 篇深挖文献；${restored.omitted} 篇超过节点上限，未能放入`, `Restored ${restored.added} deep-dive papers; ${restored.omitted} exceeded the node limit`), "error");
 		} catch (error) {
 			if (token !== generation) return;
 			showError(error instanceof Error ? error.message : tr("构建图谱失败。", "Could not build the graph."));
@@ -2027,7 +2032,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				empty.hidden = false;
 				messageText.textContent = error instanceof Error ? error.message : tr("构建图谱失败。", "Could not build the graph.");
 			}
-			status.textContent = graph ? status.textContent : tr("图谱还没有建起来。", "The graph has not been built yet.");
+			infoBar.notify(error instanceof Error ? error.message : tr("图谱还没有建起来。", "The graph has not been built yet."), "error");
 		} finally {
 			if (token === generation) setBusy(false);
 		}
@@ -2079,7 +2084,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			const token = ++generation;
 			setBusy(true);
 			clearError();
-			status.textContent = STAGE_TEXT.searching;
+			infoBar.notify(STAGE_TEXT.searching, "busy");
 			try {
 				const raw = await client().searchWorks(parsed.value);
 				if (token !== generation) return;
@@ -2089,7 +2094,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 					if (hit) hits.push(hit);
 				}
 				showHits(hits);
-				status.textContent = hits.length ? tr(`找到 ${hits.length} 篇，点选种子论文。`, `Found ${hits.length} papers. Select a seed.`) : tr("没有匹配的作品。", "No matching works.");
+				infoBar.notify(hits.length ? tr(`找到 ${hits.length} 篇，点选种子论文。`, `Found ${hits.length} papers. Select a seed.`) : tr("没有匹配的作品。", "No matching works."), "success");
 			} catch (error) {
 				if (token !== generation) return;
 				showError(error instanceof Error ? error.message : tr("搜索失败。", "Search failed."));
@@ -2221,7 +2226,6 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		deepDiveBatches = saved?.deepDives ?? [];
 		applyGraph(restored, saved?.currentView, false);
 		setBusy(false);
-		status.textContent = tr(`已恢复本地研究项目「${saved?.name ?? tr("未命名", "Untitled")}」 · ${restored.nodes.length} 篇 · 可随时更新数据`, `Restored local research project “${saved?.name ?? tr("未命名", "Untitled")}” · ${restored.nodes.length} papers · refresh data anytime`);
 	} else if (initial) {
 		input.value = initial.value;
 		void buildResolved(initial);
@@ -2323,9 +2327,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			clearError();
 			pathResult = findBudgetedCitationPath(graph.referenceLists, start, end, DEFAULT_PATH_BUDGET);
 			pathIndex = 0;
-			status.textContent = pathResult.paths.length
+			infoBar.notify(pathResult.paths.length
 				? tr(`预算内找到 ${pathResult.paths.length} 条路径（检查 ${pathResult.checked}/${pathResult.budget}）`, `Found ${pathResult.paths.length} paths within budget (${pathResult.checked}/${pathResult.budget} checked)`)
-				: tr(`预算内未找到路径（检查 ${pathResult.checked}/${pathResult.budget}${pathResult.exhausted ? "，提前耗尽" : ""}）`, `No path found within budget (${pathResult.checked}/${pathResult.budget} checked${pathResult.exhausted ? "; exhausted early" : ""})`);
+				: tr(`预算内未找到路径（检查 ${pathResult.checked}/${pathResult.budget}${pathResult.exhausted ? "，提前耗尽" : ""}）`, `No path found within budget (${pathResult.checked}/${pathResult.budget} checked${pathResult.exhausted ? "; exhausted early" : ""})`), "success");
 			paintDoiPath();
 		};
 	};
@@ -2357,6 +2361,7 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 			canvas.removeEventListener("wheel", saveCurrentViewOnGesture);
 			canvas.removeEventListener("keyup", saveCurrentViewOnGesture);
 			similarityExplorer.destroy();
+			infoBar.destroy();
 			chrome?.destroy();
 			sheet.destroy();
 			stopSidebarResize();

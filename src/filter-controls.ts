@@ -1,3 +1,4 @@
+import { setHoverHint } from "./hover-hint";
 import { tr } from "./i18n";
 import { classicNodeIds } from "./aggregates";
 import { communityColor, detectCommunities } from "./communities";
@@ -37,7 +38,7 @@ export function buildLegend(
 		const on = read().kinds[kind];
 		button.className = on ? "cpo-legend-kind is-on" : "cpo-legend-kind";
 		button.setAttribute("aria-pressed", on ? "true" : "false");
-		button.title = RELATION_LABEL[kind];
+		setHoverHint(button, RELATION_LABEL[kind]);
 		const swatch = createEl("i");
 		swatch.dataset.kind = kind;
 		const n = createSpan();
@@ -106,7 +107,7 @@ export function mountGraphKey(
 	if (seed.row.instanceOf(HTMLButtonElement) && onSeedSelect) {
 		seed.row.disabled = true;
 		seed.row.setAttribute("aria-label", tr("选择种子文献", "Select seed paper"));
-		seed.row.title = tr("选择种子文献", "Select seed paper");
+		setHoverHint(seed.row, tr("选择种子文献", "Select seed paper"));
 		seed.row.addEventListener("click", onSeedSelect);
 	}
 	const classic = markRow("cpo-graph-key-classic", tr("经典文献", "Seminal papers"));
@@ -146,7 +147,7 @@ export function mountGraphKey(
 	};
 	const setKinds = (selected: GraphFilter["kinds"]): void => {
 		for (const kind of KIND_ORDER) {
-			const button = Array.from(kinds.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.title === RELATION_LABEL[kind]);
+			const button = Array.from(kinds.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.getAttribute("aria-label") === RELATION_LABEL[kind]);
 			if (!button) continue;
 			button.classList.toggle("is-on", selected[kind]);
 			button.setAttribute("aria-pressed", String(selected[kind]));

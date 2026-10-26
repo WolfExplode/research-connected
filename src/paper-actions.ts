@@ -1,3 +1,4 @@
+import { setHoverHint } from "./hover-hint";
 import { tr } from "./i18n";
 import { createChromeIcon } from "./graph-chrome";
 import type { CitationEvidence } from "./citation-evidence";
@@ -34,6 +35,9 @@ export function paintPaperActions(
 			const staged = Boolean(options.getPaperState(seedId, paper.id)?.staged);
 			button.replaceChildren(createChromeIcon(staged ? "bookmarkCheck" : "bookmark"), document.createTextNode(staged ? tr("已暂存", "Saved") : tr("暂存", "Save")));
 			button.setAttribute("aria-pressed", String(staged));
+			setHoverHint(button, staged
+				? tr("从此项目的已保存论文中移除书签。", "Remove this bookmark from Saved papers for this project.")
+				: tr("将论文信息和发现来源加入此项目的已保存论文。不下载 PDF、不创建笔记，也不更改阅读状态。", "Bookmark this paper’s metadata and discovery source in Saved papers for this project. Does not download a PDF, create a note, or change reading status."));
 		};
 		paintStage();
 		button.onclick = async () => {
@@ -41,7 +45,6 @@ export function paintPaperActions(
 			const source = stageSourceLabel(paper, seedId, edge, evidence);
 			options.setStaged(paper, seedId, !before, source);
 			button.disabled = true;
-			button.removeAttribute("title");
 			card.querySelector(".cpo-paper-stage-error")?.remove();
 			try {
 				await options.persist?.(source);

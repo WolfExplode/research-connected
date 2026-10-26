@@ -11,6 +11,7 @@ and sizing separate. There is no separate backend owned by this plugin.
 | Plugin lifecycle and settings persistence | src/main.ts, src/settings.ts, src/settings-model.ts |
 | Obsidian pane and Markdown mounting | src/view.ts, src/embed-block.ts |
 | Pane and embed composition | src/app.ts, src/embed-mount.ts |
+| Mode-aware top status and hover hints | src/info-bar.ts, src/hover-hint.ts |
 | Shared graph controls and paper details | src/graph-surface.ts, src/graph-chrome.ts, src/detail-cards.ts, src/paper-actions.ts |
 | Canvas drawing and interaction | src/map-canvas.ts, src/node-popover.ts |
 | Layout, relationships, and candidate selection | src/layout*.ts, src/similarity.ts, src/diversity.ts, src/neighborhood.ts |

@@ -1,3 +1,4 @@
+import { verifyInfoBar } from "./info-bar";
 import { mountGraphApp, type AppDeps, type GraphAppHandle } from "../../src/app";
 import { mountEmbed } from "../../src/embed-mount";
 import { DEFAULT_SETTINGS, type ConnectedPapersSettings } from "../../src/settings-model";
@@ -6,6 +7,7 @@ import { saveGraphSnapshot } from "../../src/project-state";
 import type { ReadingStatus } from "../../src/project-state";
 import type { LibraryBridge } from "../../src/library-bridge";
 import { verifyCanvasLifecycle } from "./canvas";
+import { verifyCitationComparison } from "./comparison";
 
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 30));
@@ -60,6 +62,13 @@ async function verify(): Promise<void> {
 		await until(() => retryNote.hidden);
 		check(String(noteReading) === "read" && settings.researchProjects.W1?.paperStates?.W1?.reading === "read", "project notifications must not re-import stale note state during a reading change");
 
+		const save = root.querySelector<HTMLButtonElement>(".cpo-paper-stage")!;
+		check(save.getAttribute("aria-label")?.includes("Does not download a PDF") && !save.hasAttribute("title"), "Save must explain bookmarking through one host tooltip");
+		save.click(); await until(() => !save.disabled);
+		check(save.getAttribute("aria-label")?.includes("Remove this bookmark") && !save.hasAttribute("title"), "Saved tooltip must describe the reverse action");
+		save.click(); await until(() => !save.disabled);
+		check(reading.getAttribute("aria-label") === "Reading status" && !reading.hasAttribute("title"), "reading state must have one concise tooltip after retries");
+
 		button('[data-layout="temporal"]').click();
 		const range = root.querySelector<HTMLInputElement>(".cpo-scrub-row input")!;
 		const selectedYear = Number(range.min);
@@ -71,12 +80,12 @@ async function verify(): Promise<void> {
 		check(Number(restored.value) === selectedYear && root.querySelector(".cpo-scrub-readout")?.textContent === `Through ${selectedYear}`, "restored year control must match the saved filter");
 
 		button('[data-layout="radial"]').click();
-		await until(() => root.querySelector(".cpo-similarity-search-status")?.textContent?.includes("temporary library failure") ?? false);
+		await until(() => root.querySelector(".cpo-status")?.textContent?.includes("temporary library failure") ?? false);
 		const retry = Array.from(root.querySelectorAll<HTMLButtonElement>(".cpo-similarity-search button")).find(item => item.textContent === "Retry library search")!;
 		check(!retry.hidden && libraryCalls === 1, "failed library retrieval must offer an inline retry");
 		failLibrary = false; retry.click();
 		await until(() => libraryCalls === 2 && !root.querySelector(".cpo-similarity-search")?.getAttribute("aria-busy")?.includes("true"));
-		check(retry.hidden && root.querySelector(".cpo-similarity-search-status")?.textContent?.includes("No comparison papers"), "retry must recover and distinguish an empty result");
+		check(retry.hidden && root.querySelector(".cpo-status")?.textContent?.includes("No comparison papers"), "retry must recover and distinguish an empty result");
 		button('[data-layout="force2d"]').click();
 
 		const originalSeed = settings.researchProjects.W1!.snapshot!.nodes.find(paper => paper.isSeed)!;
@@ -111,7 +120,7 @@ async function verify(): Promise<void> {
 					for (const control of Array.from(root.querySelectorAll<HTMLElement>(".cpo-rail button"))) {
 						if (!control.getClientRects().length) continue;
 						const rect = control.getBoundingClientRect();
-						check(rect.left >= rail.left - 2 && rect.right <= rail.right + 2 && rect.top >= rail.top - 2 && rect.bottom <= rail.bottom + 2, `narrow layout and comparison controls must fit their rail at ${width}px`);
+						check(rect.left >= rail.left - 2 && rect.right <= rail.right + 2 && rect.top >= rail.top - 2 && rect.bottom <= rail.bottom + 2, `narrow layout and comparison controls must fit their rail at ${width}px (${control.textContent}: ${JSON.stringify(rect)} within ${JSON.stringify(rail)})`);
 					}
 					const rightToggle = button(".cpo-evidence-sidebar > .cpo-panel-toggle");
 					rightToggle.click();
@@ -131,12 +140,16 @@ async function verify(): Promise<void> {
 			check(Math.abs(root.querySelector<HTMLElement>(".cpo-evidence-sidebar")!.getBoundingClientRect().width - root.querySelector<HTMLElement>(".cpo-body")!.clientWidth) < 2, "embed sidebar must follow its container width");
 		} finally { destroyEmbed(); }
 		verifyCanvasLifecycle(root, originalSeed);
+		await verifyCitationComparison(root, originalSeed);
+		await verifyInfoBar(root);
 	} finally { handle.destroy(); }
 	document.body.textContent = "PASS: reading compensation, close-time saves, timeline restore, library retry, saved-paper navigation, pane/embed widths, light/dark tokens, animation policy and document listener cleanup";
 	document.body.dataset.result = "passed";
 }
 
 void verify().catch((error: unknown) => {
-	document.body.textContent = error instanceof Error ? error.stack ?? error.message : String(error);
+	const failure = document.createElement("pre");
+	failure.textContent = error instanceof Error ? error.stack ?? error.message : String(error);
+	document.body.prepend(failure);
 	document.body.dataset.result = "failed";
 });

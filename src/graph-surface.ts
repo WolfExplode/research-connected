@@ -1,3 +1,4 @@
+import { setHoverHint } from "./hover-hint";
 import { tr } from "./i18n";
 import { createChromeIcon } from "./graph-chrome";
 
@@ -182,10 +183,10 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	diversityHint.hidden = true;
 	diversityHint.textContent = tr("减少重复候选，为不同论文留出空间。关闭后移除多样性惩罚。更改后重新构建引用图谱。", "Make room for different papers by reducing redundant candidates. Turn off to remove the diversity penalty. Changes rebuild the citation graph.");
 	diversifyResults.setAttribute("aria-describedby", diversityHint.id);
-	diversityRow.title = diversityHint.textContent;
+	setHoverHint(diversityRow, diversityHint.textContent);
 	const distanceRow = createEl("label"); distanceRow.className = "cpo-graph-option cpo-distance-option";
 	distanceRow.textContent = tr("距离刻度", "Distance scale");
-	const distanceScale = createEl("select"); distanceScale.setAttribute("aria-label", "Distance scale");
+	const distanceScale = createEl("select", { cls: "cpo-distance-scale" }); distanceScale.setAttribute("aria-label", "Distance scale");
 	for (const [value, text] of [["relative", tr("相对", "Relative")], ["absolute", tr("绝对", "Absolute")]]) {
 		const option = createEl("option"); option.value = value!; option.textContent = text!; distanceScale.append(option);
 	}
@@ -195,8 +196,8 @@ export function mountGraphSurface(parent: HTMLElement, options: { canvasLabel: s
 	distanceHint.id = `${optionsPanel.id}-distance-hint`;
 	distanceHint.hidden = true;
 	distanceHint.textContent = tr("相对：展开当前论文之间的分数差异。绝对：使用固定的 0–1 刻度。仅改变相似度视图的间距，实际分数不变。", "Relative spreads the current papers across the rings. Absolute uses a fixed 0–1 scale. Only Similarity spacing changes; actual scores stay unchanged.");
-	distanceRow.title = distanceHint.textContent;
-	distanceScale.title = distanceHint.textContent;
+	setHoverHint(distanceRow, distanceHint.textContent);
+	setHoverHint(distanceScale, `${tr("距离刻度", "Distance scale")}. ${distanceHint.textContent}`);
 	distanceScale.setAttribute("aria-describedby", distanceHint.id);
 	const setOptionsOpen = (open: boolean): void => {
 		optionsPanel.hidden = !open;

@@ -1,3 +1,4 @@
+import { setHoverHint } from "./hover-hint";
 import { tr } from "./i18n";
 import { ReadingSaveError } from "./workflow/reading-state";
 import { textMethodLabel, type SimilarityKind, type TextComparison } from "./paper-comparison";
@@ -56,7 +57,7 @@ export function paintLiteratureLink(parent: HTMLElement, path: string, open: (pa
 	}
 	const button = el(note, "button", "cpo-text-btn", tr("打开笔记", "Open note"));
 	button.type = "button";
-	button.title = path;
+	setHoverHint(button, path);
 	button.onclick = () => open(path);
 	note.prepend(document.createTextNode(tr("已有笔记 · ", "In your notes · ")));
 	if (actionRow) card.insertBefore(note, actionRow);
@@ -87,7 +88,6 @@ export function paintPaperWorkflowState(
 	const card = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity") ?? parent;
 	const row = el(card, "div", "cpo-paper-actions");
 	const readingSelect = el(row, "select", "cpo-paper-reading-select");
-	readingSelect.setAttribute("aria-label", tr(`阅读状态：${paper.title || paper.id}`, `Reading status: ${paper.title || paper.id}`));
 	let currentReading = state.reading;
 	const labels: Record<ReadingStatus, string> = { unread: tr("未读", "Unread"), "to-read": tr("待读", "To read"), read: tr("已读", "Read") };
 	for (const reading of ["unread", "to-read", "read"] as const) {
@@ -97,7 +97,7 @@ export function paintPaperWorkflowState(
 		readingSelect.append(option);
 	}
 	readingSelect.value = currentReading;
-	readingSelect.title = tr("阅读状态", "Reading status");
+	setHoverHint(readingSelect, tr("阅读状态", "Reading status"));
 	const feedback = el(card, "p", "cpo-paper-action-error");
 	feedback.setAttribute("role", "status");
 	feedback.hidden = true;
@@ -108,7 +108,7 @@ export function paintPaperWorkflowState(
 		try {
 			await onReading(currentReading, currentReading);
 			feedback.hidden = retry.hidden = true;
-			readingSelect.title = tr("阅读状态", "Reading status");
+			setHoverHint(readingSelect, tr("阅读状态", "Reading status"));
 		} catch (error) {
 			if (error instanceof ReadingSaveError) currentReading = error.reading;
 			readingSelect.value = currentReading;
@@ -125,14 +125,14 @@ export function paintPaperWorkflowState(
 		try {
 			await onReading(next, previous);
 			currentReading = next;
-			readingSelect.title = tr("阅读状态", "Reading status");
+			setHoverHint(readingSelect, tr("阅读状态", "Reading status"));
 		} catch (error) {
 			if (error instanceof ReadingSaveError) currentReading = error.reading;
 			retry.hidden = !(error instanceof ReadingSaveError && error.retrySync);
 			readingSelect.value = currentReading;
 			feedback.textContent = error instanceof Error ? error.message : tr("保存失败，请重试", "Could not save. Try again.");
 			feedback.hidden = false;
-			readingSelect.title = feedback.textContent;
+			setHoverHint(readingSelect, feedback.textContent);
 		} finally {
 			readingSelect.disabled = false;
 		}
@@ -142,7 +142,7 @@ export function paintPaperWorkflowState(
 		exclude.type = "button";
 		exclude.prepend(createChromeIcon("exclude"));
 		exclude.disabled = paper.isSeed;
-		exclude.title = paper.isSeed ? tr("种子论文不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project");
+		setHoverHint(exclude, paper.isSeed ? tr("种子论文不能排除", "The seed paper cannot be excluded") : tr("从当前项目排除", "Exclude from this project"));
 		if (onExclude) exclude.onclick = onExclude;
 	}
 }
@@ -178,7 +178,7 @@ export function paintVenueRow(parent: HTMLElement, paper: PaperNode): void {
 	if (!paper.venue) return;
 	const row = el(parent, "div", "cpo-badge-row cpo-venue-row");
 	const venue = el(row, "span", "cpo-paper-venue", paper.venue);
-	venue.title = paper.venue;
+	setHoverHint(venue, paper.venue);
 }
 
 /** 聚合列表（先验/衍生）单条：与元数据卡同一体系的迷你卡，整条可点击。 */
@@ -257,7 +257,7 @@ export function paintMetadataCard(parent: HTMLElement, paper: PaperNode, check: 
 /** One labeled similarity meter; null renders the unavailable empty state. */
 export function paintMeter(parent: HTMLElement, label: string, value: number | null, hint: string, alt = false): void {
 	const meter = el(parent, "div", "cpo-meter");
-	meter.title = hint;
+	setHoverHint(meter, hint);
 	const head = el(meter, "div", "cpo-meter-head");
 	el(head, "span", "cpo-meter-label", label);
 	if (value === null) {

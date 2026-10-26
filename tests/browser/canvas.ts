@@ -43,6 +43,18 @@ export function verifyCanvasLifecycle(root: HTMLElement, seed: PaperNode): void 
 		check(frames.size === 0, "reduced motion must stop continuous and simulation frames");
 		const zoom = map.getViewState().zoom; map.zoomBy(1.2);
 		check(map.getViewState().zoom > zoom && frames.size === 0, "reduced-motion zoom must apply immediately without animation");
+		map.setLayout("radial");
+		map.setComparisonScores(scores, "text");
+		const textPositions = nodes.map(paper => map!.nodeAnchor(paper.id));
+		const textView = map.getViewState();
+		for (let round = 0; round < 3; round++) {
+			map.adoptGraph(nodes, edges, new Map([[seed.id, 1]]));
+			map.setComparisonScores(new Map([[seed.id, 1]]), "citations");
+			check(JSON.stringify(map.nodeAnchor("W2")) !== JSON.stringify(textPositions[1]), "missing citation data must move to its separate grid");
+			map.adoptGraph(nodes, edges, scores); map.setComparisonScores(scores, "text");
+			check(JSON.stringify(nodes.map(paper => map!.nodeAnchor(paper.id))) === JSON.stringify(textPositions), "Text/Citations round trips must restore every orbital angle, rather than using missing-data grid angles");
+			check(JSON.stringify(map.getViewState()) === JSON.stringify(textView), "comparison switching must preserve viewport and selection");
+		}
 		reduced = false; mediaListeners.forEach(listener => listener());
 		map.destroy();
 		check(frames.size === 0 && mediaListeners.size === 0, "destroy must release animation frames and media listeners");

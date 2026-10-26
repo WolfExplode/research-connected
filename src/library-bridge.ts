@@ -1,3 +1,4 @@
+import { setHoverHint } from "./hover-hint";
 import { tr } from "./i18n";
 import type { PaperNode } from "./types";
 import type { DiscoveryPayload, DiscoveryRequest } from "./discovery-graph";
@@ -58,13 +59,20 @@ export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bri
 	const target = local.note ?? local.files[0];
 	if (!target) return;
 	const label = tr("打开本地论文", "Open local paper");
-	const button = createEl("button", { cls: menu ? "cpo-local-paper-menu" : "cpo-local-paper", text: menu ? `📄 ${label}` : "📄" });
+	const button = createEl("button", { cls: menu ? "cpo-local-paper-menu" : "cpo-paper-action cpo-local-paper", text: menu ? `📄 ${label}` : "📄" });
 	button.type = "button";
-	button.title = `${label} · ${target}`;
-	button.setAttribute("aria-label", label);
+	setHoverHint(button, `${label} · ${target}`);
 	if (menu) button.setAttribute("role", "menuitem");
 	button.addEventListener("click", () => { bridge.open(target); if (menu) parent.hidden = true; });
-	parent.append(button);
+	if (menu) parent.append(button);
+	else {
+		let actions = parent.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
+		if (!actions) {
+			actions = createDiv({ cls: "cpo-paper-actions" });
+			parent.append(actions);
+		}
+		actions.insertBefore(button, actions.querySelector(":scope > .cpo-paper-sources"));
+	}
 }
 
 export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, bridge: LibraryBridge, openExternal: (url: string) => void, recovery?: DoiRecoveryAction): void {
@@ -93,7 +101,7 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 			heading.append(createEl("strong", { text: label }));
 			const line = createSpan({ cls: "cpo-availability-status", text: `${text[state] ?? state}${value?.checking && state !== "checking" ? tr(" · 正在刷新…", " · refreshing…") : ""}` });
 			line.dataset.state = state;
-			if (value?.detail) line.title = value.detail;
+			if (value?.detail) setHoverHint(line, value.detail);
 			heading.append(line); row.append(heading); providers.append(row);
 			if (value?.checkedAt) row.append(createEl("small", { cls: "cpo-availability-meta", text: tr("查询于 ", "Checked ") + new Date(value.checkedAt).toLocaleString() + cached }));
 			else if (cached) row.append(createEl("small", { cls: "cpo-availability-meta", text: cached.trim() }));
@@ -111,7 +119,7 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 						link.href = url.href;
 						link.target = "_blank";
 						link.rel = "noopener noreferrer";
-						link.title = url.href;
+						setHoverHint(link, url.href);
 						link.addEventListener("click", event => {
 							// Keep modified clicks and the context menu available as normal link actions.
 							if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -127,11 +135,10 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 				const check = createEl("button", { text: state === "not-checked" ? (name === "oa" ? tr("查询开放获取", "Check open access") : tr("查询 Sci-Hub", "Check Sci-Hub")) : "↻" });
 				check.type = "button";
 				if (state !== "not-checked") {
-					check.title = tr("重新查询", "Check again");
-					check.setAttribute("aria-label", check.title);
+					setHoverHint(check, tr("重新查询", "Check again"));
 				}
 				check.disabled = !data.doi || !!data.checking;
-				if (!data.doi) check.title = tr("需要 DOI 才能查询", "A DOI is needed to check availability");
+				if (!data.doi) setHoverHint(check, tr("需要 DOI 才能查询", "A DOI is needed to check availability"));
 				buttons.push(check); linkActions.append(check);
 				check.addEventListener("click", () => {
 					for (const item of buttons) item.disabled = true;

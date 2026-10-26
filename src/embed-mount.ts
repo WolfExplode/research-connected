@@ -1,3 +1,5 @@
+import { createInfoBar, graphInfo } from "./info-bar";
+import { setHoverHint } from "./hover-hint";
 import { readingChangePending, saveReadingState } from "./workflow/reading-state";
 import { createComparisonCitations } from "./workflow/comparison-citations";
 import { graphApiStatus } from "./api-status";
@@ -71,7 +73,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	const saveReading = (paper: PaperNode, seedId: string, reading: ReadingStatus, previous: ReadingStatus, source: string): Promise<void> =>
 		saveReadingState({ projects: deps.getSettings().researchProjects, seedId, paper, reading, previous,
 			persist: () => deps.stagePaper?.(paper, seedId, source), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
-			status.textContent = error instanceof Error ? error.message : tr("阅读状态保存失败", "Could not save reading status");
+			infoBar.notify(error instanceof Error ? error.message : tr("阅读状态保存失败", "Could not save reading status"), "error");
 			throw error;
 		});
 
@@ -97,6 +99,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	brand.append(brandMark, brandName);
 	const status = createEl("p");
 	status.className = "cpo-status";
+	const infoBar = createInfoBar(status);
 	status.setAttribute("role", "status");
 
 	topLine.append(brand, status);
@@ -178,7 +181,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 
 	if (!parsed.ok) {
 		shell.classList.add("is-error");
-		status.textContent = tr("代码块还不能建图", "This code block cannot build a graph yet");
+		infoBar.notify(tr("代码块还不能建图", "This code block cannot build a graph yet"), "error");
 		messageText.textContent = parsed.error;
 		reload.hidden = true;
 		rail.hidden = true;
@@ -248,10 +251,11 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			? tr("相似度搜索直接按文本分数排序；多样化仅用于引用邻居筛选。", "Similarity search ranks directly by text score; diversity applies only to citation-neighbor selection.")
 			: tr("减少重复候选，为不同论文留出空间。更改后重新构建引用图谱。", "Reduce redundant candidates to make room for different papers. Changes rebuild the citation graph.");
 		map.setDistanceScale(surface.distanceScale.value === "absolute" ? "absolute" : "relative");
-		surface.diversifyResults.parentElement!.title = surface.diversityHint.textContent ?? "";
+		setHoverHint(surface.diversifyResults.parentElement!, surface.diversityHint.textContent ?? "");
 		root.classList.toggle("is-similarity", layoutMode === "radial");
 		root.classList.toggle("is-citation-similarity", layoutMode === "radial" && similarityKind === "citations");
 		const scoped = similarityExplorer.update(currentGraph, storedText, layoutMode === "radial", similarityKind);
+		syncInfoBar();
 		if (scoped) {
 			comparison = scoped.scores;
 			map.adoptGraph(scoped.graph.nodes, scoped.graph.edges, comparison[similarityKind]);
@@ -263,6 +267,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		if (!currentGraph) return;
 		comparison = comparisonData(currentGraph, storedText);
 		map.setComparisonScores(layoutMode === "radial" ? comparison[similarityKind] : currentGraph.seedScore, similarityKind);
+	}
+	function syncInfoBar(): void {
+		const key = `${tab}:${layoutMode}:${similarityKind}:${similarityExplorer.contextKey}:${currentGraph?.nodes.find(p => p.isSeed)?.id ?? ""}`;
+		infoBar.context(key, tab !== "graph" ? { kind: "summary", text: tabTitles[tab] } : similarityExplorer.status ?? graphInfo(currentGraph, layoutMode));
 	}
 	function loadStoredText(): void {
 		const revision = ++storedTextRevision, target = currentGraph;
@@ -338,6 +346,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	const paintLists = (): void => {
+		syncInfoBar();
 		evidenceTitle.textContent = tabTitles[tab] ?? tabTitles.graph;
 		detail.hidden = tab !== "graph";
 		if (!currentGraph || tab === "graph") {
@@ -535,7 +544,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const project = deps.getSettings().researchProjects[seedId];
 		paintIdentitySources(detail, paper, deps.openExternal, () => {
 			if (!currentGraph) return;
-			if (currentGraph.nodes.length + (paper.records?.length ?? 1) - 1 > deps.getSettings().maxNodes) { status.textContent = tr("分开记录将超过节点上限，请先移除其他论文", "Splitting these records would exceed the node limit. Remove another paper first."); return; }
+			if (currentGraph.nodes.length + (paper.records?.length ?? 1) - 1 > deps.getSettings().maxNodes) { infoBar.notify(tr("分开记录将超过节点上限，请先移除其他论文", "Splitting these records would exceed the node limit. Remove another paper first."), "error"); return; }
 			const next = separateWorkRecords(sourceGraph ?? currentGraph, paper);
 			if (project) { reconcileProjectIdentity(project, next); project.snapshot = saveGraphSnapshot(next); }
 			renderGraph(next, lastDepthNote);
@@ -684,7 +693,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	const incompleteCitationChecks = new WeakSet<SimilarityGraph>();
-	surface.apiStatus.read = () => graphApiStatus(currentGraph, requestLibraryBridge(), similarityExplorer.apiError, Boolean(currentGraph && incompleteCitationChecks.has(currentGraph)));
+	surface.apiStatus.read = () => graphApiStatus(currentGraph, layoutMode === "radial" && similarityKind === "text" ? requestLibraryBridge() : null, similarityExplorer.apiError, Boolean(currentGraph && incompleteCitationChecks.has(currentGraph)));
 	const nodePopover = mountNodePopover(stage, canvas, map, () => !body.classList.contains("is-sidebar-collapsed"));
 	map.onSelect = (paper) => {
 		nodePopover.show(paper, similarityKind, comparison[similarityKind].get(paper?.id ?? ""), comparison.details.get(paper?.id ?? ""), requestLibraryBridge());
@@ -727,13 +736,8 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		else chrome?.clearYears();
 		paintLists();
 		const seed = graph.nodes.find((node) => node.isSeed);
-		const fullStatus = tr(`${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} 篇${depthNote ? ` · ${depthNote}` : ""}${
-			graph.skippedNonResearch ? ` · 滤除书评等 ${graph.skippedNonResearch} 条` : ""
-		}${graph.pagingLimited ? " · 深度采样未翻页：没有 OpenAlex API 密钥，只取了第一页" : ""}`, `${[seed?.title, seed?.authors, seed?.year].filter(Boolean).join(" · ") || tr("图谱", "Graph")} · ${graph.nodes.length} papers${depthNote ? ` · ${depthNote}` : ""}${
-			graph.skippedNonResearch ? ` · filtered ${graph.skippedNonResearch} reviews and other non-research records` : ""
-		}${graph.pagingLimited ? " · deep sampling stayed on page 1 because no OpenAlex API key is set" : ""}`);
-		status.textContent = fullStatus;
-		status.title = fullStatus;
+		infoBar.clearProgress();
+		syncInfoBar();
 		if (seed) showDetail(seed, graph, null);
 	};
 
@@ -778,7 +782,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		placeDetailPlaceholder();
 		tooltip.hidden = true;
 		message.hidden = true;
-		status.textContent = STAGE_TEXT.resolving;
+		infoBar.notify(STAGE_TEXT.resolving, "busy");
 		reload.disabled = true;
 		surface.diversifyResults.disabled = true;
 		surface.diversifyResults.checked = deps.getSettings().diversifyResults !== false;
@@ -797,7 +801,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 					{ ...settings, maxNodes: firstCap },
 					(stage) => {
 						if (token === generation) {
-							status.textContent = STAGE_TEXT[stage];
+							infoBar.notify(STAGE_TEXT[stage], "busy");
 						}
 					},
 					reconcileFor(deps, settings),
@@ -817,9 +821,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 			if (!alive || token !== generation) return;
 			message.hidden = false;
 			messageText.textContent = error instanceof Error ? error.message : tr("构建图谱失败。", "Could not build the graph.");
-			status.textContent = tr("图谱没有建起来", "The graph could not be built");
+			infoBar.notify(error instanceof Error ? error.message : tr("图谱没有建起来", "The graph could not be built"), "error");
 		} finally {
 			if (token === generation) {
+				infoBar.clearProgress();
 				reload.disabled = false;
 				surface.diversifyResults.disabled = layoutMode === "radial";
 			}
@@ -847,7 +852,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 				if (alive) await load(true);
 			} catch (error) {
 				settings.diversifyResults = previous;
-				if (alive) status.textContent = tr("图谱选项保存失败：", "Could not save graph options: ") + String(error);
+				if (alive) infoBar.notify(tr("图谱选项保存失败：", "Could not save graph options: ") + String(error), "error");
 			} finally {
 				if (alive) { surface.diversifyResults.checked = settings.diversifyResults !== false; surface.diversifyResults.disabled = false; }
 			}
@@ -880,6 +885,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		window.removeEventListener("keydown", onMenuKey);
 		map.destroy();
 		similarityExplorer.destroy();
+		infoBar.destroy();
 		chrome?.destroy();
 		sheet.destroy();
 		stopResize();

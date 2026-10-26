@@ -1,3 +1,5 @@
+import { createCountControl } from "./count-control";
+import type { InfoMessage } from "./info-bar";
 import { tr } from "./i18n";
 import { paintLibraryAvailability, type LibraryBridge, type DoiRecoveryAction } from "./library-bridge";
 import { paintAbstractCard, paintComparisonCard, paintMetadataCard } from "./detail-cards";
@@ -18,29 +20,17 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => Librar
 		const option = createEl("option"); option.value = value!; option.textContent = title!; scope.append(option);
 	}
 	scope.value = bridge()?.textLibrary ? "library" : "external";
-	const limitLabel = createEl("label"); limitLabel.textContent = tr("显示", "Show");
-	const limit = createEl("input"); limit.type = "number"; limit.min = "1"; limit.max = "300"; limit.step = "1";
-	limit.setAttribute("aria-label", "Similarity result limit");
-	const limitControl = createSpan(); limitControl.className = "cpo-result-limit-control";
-	const limitPresets = createEl("select"); limitPresets.setAttribute("aria-label", "Choose result limit preset");
-	const presetPlaceholder = createEl("option"); presetPlaceholder.value = ""; presetPlaceholder.textContent = "▾"; presetPlaceholder.hidden = true;
-	limitPresets.append(presetPlaceholder);
-	for (const cap of [20, 50, 100, 300]) { const option = createEl("option"); option.value = String(cap); option.textContent = String(cap); limitPresets.append(option); }
-	limitPresets.value = "";
-	limitControl.append(limit, limitPresets);
-	limitLabel.append(limitControl);
-	limit.value = "50";
+	const count = createCountControl({ label: "Similarity result limit", presetLabel: "Choose result limit preset",
+		initial: 50, max: 300, presets: [20, 50, 100, 300], onChange });
+	const limitLabel = count.element, limit = count.input;
 	const neighbors = createEl("button"); neighbors.type = "button"; neighbors.className = "cpo-ghost";
 	neighbors.textContent = tr("构建引用连线", "Build citation links");
-	const status = createEl("p"); status.className = "cpo-similarity-search-status";
-	status.setAttribute("role", "status");
 	const retry = createEl("button"); retry.type = "button"; retry.className = "cpo-ghost";
 	retry.textContent = tr("重试文库检索", "Retry library search"); retry.hidden = true;
-	const citationStatus = createEl("p"); citationStatus.className = "cpo-comparison-citation-status";
-	citationStatus.setAttribute("role", "status"); citationStatus.hidden = true;
 	const retryCitations = createEl("button"); retryCitations.type = "button"; retryCitations.className = "cpo-ghost";
 	retryCitations.textContent = tr("重试引用数据", "Retry citation data"); retryCitations.hidden = true;
-	bar.append(scope, limitLabel, status, retry, citationStatus, retryCitations); stage.append(bar);
+	bar.append(scope, limitLabel, retry, retryCitations); stage.append(bar);
+	let info: InfoMessage | null = null;
 	let library: LibraryTextPaper[] | null = null;
 	let pending = false, error = "", alive = true, revision = 0;
 	let base: SimilarityGraph | null = null, center: PaperNode | undefined;
@@ -55,22 +45,6 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => Librar
 	const changed = (): void => { onChange(); };
 	retry.addEventListener("click", () => { invalidate(); changed(); });
 	scope.addEventListener("change", changed);
-	const commitLimit = (): void => {
-		const value = limit.valueAsNumber;
-		limit.value = String(Number.isFinite(value) ? Math.max(1, Math.min(300, Math.round(value))) : 50);
-		changed();
-	};
-	limit.addEventListener("change", commitLimit);
-	limit.addEventListener("keydown", event => {
-		if (event.key !== "Enter") return;
-		event.preventDefault(); event.stopPropagation();
-		commitLimit(); limit.blur();
-	});
-	limitPresets.addEventListener("change", () => {
-		if (!limitPresets.value) return;
-		limit.value = limitPresets.value; limitPresets.value = "";
-		commitLimit(); limitPresets.blur();
-	});
 	const loadedNeighbors = new Set<string>();
 	let neighborsLoading = false;
 	const syncNeighbors = (): void => {
@@ -111,7 +85,9 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => Librar
 		});
 	}
 	return {
-		get apiError() { return error; },
+		get contextKey() { return active ? `${scope.value}:${limit.value}:${center?.id ?? ""}` : ""; },
+		get status() { return active ? info : null; },
+		get apiError() { return active ? error : ""; },
 		get result() { return active ? result : null; },
 		get neighborAction() { return { label: neighbors.textContent ?? "", disabled: neighbors.disabled, loading: neighborsLoading }; },
 		loadNeighbors(): void { if (active && !neighbors.disabled) neighbors.click(); },
@@ -138,7 +114,7 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => Librar
 		},
 		update(graph: SimilarityGraph | null, evidence: readonly StoredTextEvidence[], enabled: boolean, kind: SimilarityKind = "text"): SearchResult | null {
 			active = enabled && Boolean(graph); bar.hidden = !active;
-			if (!active || !graph) return null;
+			if (!active || !graph) { info = null; return null; }
 			if (base !== graph) {
 				base = graph; center = undefined;
 				const seed = graph.nodes.find(paper => paper.isSeed);
@@ -168,19 +144,18 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => Librar
 			}
 			// Reference lists can be enriched in place; refresh citations without reranking papers.
 			result.scores.citations = comparisonData(result.graph).citations;
-			citationStatus.hidden = kind !== "citations";
 			retryCitations.hidden = kind !== "citations" || !citationFailed;
-			const covered = result.graph.nodes.filter(paper => !paper.isSeed && result!.scores.citations.has(paper.id)).length;
-			citationStatus.textContent = citationPending === result.graph ? tr("正在加载比较论文的引用数据…", "Loading citation data for comparison papers…")
-				: citationFailed ? tr("部分引用数据加载失败。请重试。", "Some citation data failed to load. Please retry.")
-				: tr(`引用证据：${covered}/${result.shown} 篇；其余论文数据不足。`, `Citation evidence: ${covered}/${result.shown} papers; remaining papers have insufficient data.`);
 			syncNeighbors();
-			bar.setAttribute("aria-busy", String(pending));
+			bar.setAttribute("aria-busy", String(pending || kind === "citations" && citationPending === result.graph));
 			retry.hidden = !error;
-			const counts = tr(`已比较 ${result.compared} 篇 · 显示 ${result.shown} 篇 · ${result.fallback} 篇使用词语重合度`, `Compared ${result.compared} · showing ${result.shown} · ${result.fallback} use word overlap`);
-			status.textContent = error ? tr(`文库检索失败：${error}`, `Library search failed: ${error}`)
-				: pending ? tr("正在读取文库，结果尚未完整。", "Loading library; results are not complete yet.")
-				: result.compared ? counts : tr("当前范围内没有可比较的论文。", "No comparison papers in this scope.");
+			const label = kind === "text" ? tr("文本相似度", "Text similarity") : tr("引用相似度", "Citation similarity");
+			const counts = tr(`已比较 ${result.compared} 篇 · 显示 ${result.shown} 篇`, `Compared ${result.compared} · showing ${result.shown}`);
+			info = error ? { kind: "error", text: tr(`文库检索失败：${error}`, `Library search failed: ${error}`) }
+				: pending ? { kind: "busy", text: tr("正在读取文库…", "Loading library…") }
+				: kind === "citations" && citationPending === result.graph ? { kind: "busy", text: tr("正在加载比较论文的引用数据…", "Loading citation data for comparison papers…") }
+				: kind === "citations" && citationFailed ? { kind: "error", text: tr("部分引用数据加载失败。请重试。", "Some citation data failed to load. Please retry.") }
+				: { kind: "summary", text: result.compared ? `${label} · ${counts}` : `${label} · ${tr("当前范围内没有可比较的论文。", "No comparison papers in this scope.")}`,
+					detail: kind === "text" && result.fallback ? tr(`${result.fallback} 篇使用词语重合度。`, `${result.fallback} papers use word overlap.`) : undefined };
 			return result;
 		},
 		destroy(): void { alive = false; revision++; bar.remove(); },

@@ -1,3 +1,9 @@
+// Obsidian uses aria-label for its styled hover tooltip.
+export function setTooltip(element: HTMLElement, text: string): void {
+	if (text) element.setAttribute("aria-label", text);
+	else element.removeAttribute("aria-label");
+}
+
 export function getLanguage(): string {
 	return typeof document !== "undefined" ? document.documentElement.lang || "en" : "zh-CN";
 }

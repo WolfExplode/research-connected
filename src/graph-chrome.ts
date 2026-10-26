@@ -1,3 +1,4 @@
+import { setHoverHint } from "./hover-hint";
 import { tr } from "./i18n";
 import { evidenceBadges, paperStateBadges, type CitationEvidence, type CrossCheckLike, type EvidenceBadge, type PaperStateLike } from "./citation-evidence";
 import { LAYOUT_HINT, LAYOUT_LABEL, type LayoutMode } from "./layout-modes";
@@ -177,7 +178,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		if (timer) window.clearInterval(timer);
 		timer = 0;
 		play.setAttribute("aria-label", tr("播放时间视图", "Play timeline"));
-		play.title = tr("播放时间视图", "Play timeline");
+		setHoverHint(play, tr("播放时间视图", "Play timeline"));
 		play.replaceChildren(createChromeIcon("play"));
 		play.setAttribute("aria-pressed", "false");
 	};
@@ -208,9 +209,8 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			syncScrub();
 			options.onLayout(mode);
 		});
-		button.title = LAYOUT_HINT[mode];
+		setHoverHint(button, LAYOUT_HINT[mode]);
 		button.dataset.layout = mode;
-		button.setAttribute("aria-label", LAYOUT_LABEL[mode]);
 		const label = createSpan();
 		label.className = "cpo-layout-label";
 		label.textContent = LAYOUT_LABEL[mode];
@@ -274,7 +274,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		range.value = String(year);
 		publish();
 		play.setAttribute("aria-label", tr("暂停时间视图", "Pause timeline"));
-		play.title = tr("暂停时间视图", "Pause timeline");
+		setHoverHint(play, tr("暂停时间视图", "Pause timeline"));
 		play.replaceChildren(createChromeIcon("pause"));
 		play.setAttribute("aria-pressed", "true");
 		timer = window.setInterval(() => {
@@ -307,7 +307,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 			for (const [key, item] of tabButtons) setPressed(item, key === tab);
 			options.onTab(tab);
 		});
-		button.title = label;
+		setHoverHint(button, label);
 		tabButtons.set(tab, button);
 		if (tab === "research") button.hidden = !options.researchButton;
 		tabRow.append(button);
@@ -354,7 +354,7 @@ export function mountGraphChrome(host: HTMLElement, options: GraphChromeOptions)
 		setSimilarityKind: selectSimilarity,
 		setCitationSimilarityAvailable(available): void {
 			const button = similarityButtons.get("citations");
-			if (button) { button.disabled = !available; button.title = available ? "" : tr("此结果尚无引用数据", "Citation data is unavailable for these results"); }
+			if (button) { button.disabled = !available; setHoverHint(button, available ? "" : tr("此结果尚无引用数据", "Citation data is unavailable for these results")); }
 			if (!available && similarityKind === "citations") selectSimilarity("text");
 		},
 		setSimilarityAvailable(available): void {
