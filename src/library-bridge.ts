@@ -8,6 +8,7 @@ import type { DoiRecovery } from "./doi-recovery";
 declare global {
 	interface WindowEventMap {
 		"research-connected-library-changed": Event;
+		"research-connected-label-paper": CustomEvent<{ note: string }>;
 		"research-connected-theme": Event;
 		"research-connected-open-discovery": CustomEvent<{ payload?: DiscoveryPayload; paper?: string; question?: string; mode?: "rank" | "search"; handled?: boolean }>;
 	}
@@ -20,7 +21,7 @@ export interface LibraryAvailability {
 	checking?: boolean;
 }
 
-/** Optional host integration. It owns holdings and provider access; graph state stays independent. */
+/** The paper library's interface to graphs; ResearchLibrary implements it over the research tools. Graph state stays independent. */
 export interface LibraryBridge {
 	version: 1;
 	read(paper: PaperNode): LibraryAvailability;
@@ -38,12 +39,6 @@ export interface LibraryBridge {
 		context(): { questions: Array<{ path: string; title: string }>; papers: Array<{ path: string; title: string }> };
 		run(request: DiscoveryRequest): Promise<DiscoveryPayload>;
 	};
-}
-
-export function requestLibraryBridge(): LibraryBridge | null {
-	const detail: { bridge?: LibraryBridge } = {};
-	window.dispatchEvent(new CustomEvent("research-connected-library-request", { detail }));
-	return detail.bridge?.version === 1 ? detail.bridge : null;
 }
 
 export interface DoiRecoveryAction {
@@ -151,7 +146,7 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 						if (card.isConnected) { paint(next); feedback.textContent = ""; }
 					}).catch(() => {
 						if (card.isConnected) {
-							feedback.textContent = tr("查询失败，请检查文库插件配置", "Check failed; inspect Research Vault configuration");
+							feedback.textContent = tr("查询失败，请检查研究工具设置", "Check failed; check the research tools settings");
 							check.textContent = idleLabel;
 							for (const item of buttons) item.disabled = !data.doi;
 						}
@@ -164,6 +159,13 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 	paint(initial);
 	if (initial.local.note) {
 		const note = initial.local.note;
+		if (note.startsWith("Research/Papers/")) {
+			const label = createEl("button", { text: tr("标注论文", "Label paper") });
+			label.type = "button";
+			setHoverHint(label, tr("质量、阅读状态、收藏和问题相关性，写入论文笔记", "Quality, reading status, bookmark and question relevance, written to the paper note"));
+			label.addEventListener("click", () => window.dispatchEvent(new CustomEvent("research-connected-label-paper", { detail: { note } })));
+			actions.append(label);
+		}
 		if (bridge.discovery && note.startsWith("Research/Papers/")) {
 			const related = createEl("button", { text: tr("查找本地相关论文", "Find related local papers") });
 			related.type = "button";

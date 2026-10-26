@@ -12,6 +12,8 @@ export { DEFAULT_SETTINGS, type ConnectedPapersSettings };
 export interface SettingsStore {
 	settings: ConnectedPapersSettings;
 	saveSettings(): Promise<void>;
+	/** One sentence on whether the research tools were found. */
+	researchToolsStatus?(): string;
 }
 
 export class ConnectedPapersSettingTab extends PluginSettingTab {
@@ -154,6 +156,64 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 							this.store.settings.literatureDoiProperty = value.trim() || "doi";
 							await this.store.saveSettings();
 						});
+				});
+			},
+		});
+
+		items.push({
+			name: tr("研究工具仓库", "Research tools repository"),
+			desc: tr("包含 Tools/research/cli.js 的文件夹。留空则使用库所在的上级文件夹。保存、收藏、可用性、SPECTER2 和发现功能都通过它运行；未配置时引用图谱仍可用。", "Folder containing Tools/research/cli.js. Empty uses the folder that contains this vault. Save, Bookmark, availability, SPECTER2 and discovery run through these tools; without them the citation graph still works.") + (this.store.researchToolsStatus ? ` ${this.store.researchToolsStatus()}` : ""),
+			render: (setting) => {
+				setting.addText((text) => {
+					text
+						.setPlaceholder(tr("库的上级文件夹", "Vault's parent folder"))
+						.setValue(this.store.settings.researchRepository)
+						.onChange(async (value) => {
+							this.store.settings.researchRepository = value.trim();
+							await this.store.saveSettings();
+						});
+				});
+			},
+		});
+
+		items.push({
+			name: tr("Node 可执行文件", "Node executable"),
+			desc: tr("node.exe 的路径，或 PATH 中的命令。", "Path to node.exe, or a command on PATH."),
+			render: (setting) => {
+				setting.addText((text) => {
+					text
+						.setPlaceholder(tr("命令或路径", "Command or path"))
+						.setValue(this.store.settings.researchNode)
+						.onChange(async (value) => {
+							this.store.settings.researchNode = value.trim() || "node";
+							await this.store.saveSettings();
+						});
+				});
+			},
+		});
+
+		items.push({
+			name: tr("自动查询开放获取", "Check open access automatically"),
+			desc: tr("为显示中的图谱论文分批在后台查询。已缓存的链接会立即显示；Sci-Hub 仍需手动查询。", "Check papers in displayed graphs in background batches. Cached links appear immediately; Sci-Hub checks stay manual."),
+			render: (setting) => {
+				setting.addToggle((toggle) => {
+					toggle.setValue(this.store.settings.autoOpenAccess).onChange(async (value) => {
+						this.store.settings.autoOpenAccess = value;
+						await this.store.saveSettings();
+					});
+				});
+			},
+		});
+
+		items.push({
+			name: tr("自动下载 SPECTER2", "Download SPECTER2 automatically"),
+			desc: tr("图谱或文库相似度加载时，从 Semantic Scholar 获取缺失的向量，缓存在研究仓库中并在后台更新分数。使用下方的 Semantic Scholar API 密钥。", "Fetch missing embeddings from Semantic Scholar when graphs or library similarity load. They are cached in the research repository and scores update in the background. Uses the Semantic Scholar API key below."),
+			render: (setting) => {
+				setting.addToggle((toggle) => {
+					toggle.setValue(this.store.settings.autoSpecter2).onChange(async (value) => {
+						this.store.settings.autoSpecter2 = value;
+						await this.store.saveSettings();
+					});
 				});
 			},
 		});

@@ -97,8 +97,9 @@ if (prod) {
 		throw new Error('main.js must not contain require("electron")');
 	}
 	// Desktop-only (manifest isDesktopOnly): Node's file APIs reach the research repository's shared
-	// provider pauses. Anything else needs an explicit decision here.
-	const allowed = new Set(["obsidian", "fs", "path"]);
+	// provider pauses, and child processes run its research CLI and availability worker
+	// (src/research-tools.ts). Anything else needs an explicit decision here.
+	const allowed = new Set(["obsidian", "fs", "path", "child_process"]);
 	const requires = [...source.matchAll(/require\(["']([^"']+)["']\)/g)].map((match) => match[1]);
 	const foreign = requires.filter((id) => !allowed.has(id));
 	if (foreign.length > 0) {
@@ -108,11 +109,15 @@ if (prod) {
 	class ItemView {}
 	class PluginSettingTab {}
 	class MarkdownRenderChild {}
+	class Modal {}
+	class TFile {}
 	const obsidian = {
 		Plugin,
 		ItemView,
 		PluginSettingTab,
 		MarkdownRenderChild,
+		Modal,
+		TFile,
 		Platform: { isDesktopApp: false },
 		requestUrl() {
 			return Promise.resolve({ status: 200, json: {} });

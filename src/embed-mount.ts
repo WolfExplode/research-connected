@@ -11,7 +11,7 @@ import { isChinese, tr } from "./i18n";
 import { mountSimilarityExplorer } from "./similarity-explorer";
 import { comparisonData, type SimilarityKind, type StoredTextEvidence, type TextComparison } from "./paper-comparison";
 import { paintComparisonCard } from "./detail-cards";
-import { paintLocalPaperAction, requestLibraryBridge } from "./library-bridge";
+import { paintLocalPaperAction, type LibraryBridge } from "./library-bridge";
 import { AGGREGATE_EMPTY_TEXT, DERIVATIVE_DEFINITION, PRIOR_DEFINITION, derivativeWorks, priorWorks, type RankedWork } from "./aggregates";
 import { CrossrefClient, crossrefAbstract, semanticAbstract, SemanticScholarClient, OpenCitationsClient, doisFromOpenCitation, doiFromPaper, type PostJson } from "./citation-sources";
 import { mergeOpenCitation } from "./citation-evidence";
@@ -44,6 +44,8 @@ export interface EmbedDeps {
 	postJson?: PostJson;
 	openExternal: (url: string) => void;
 	paperLibrary?: PaperLibrary;
+	/** Holdings, availability and stored text from the research tools; null when none are configured. */
+	libraryBridge?: () => LibraryBridge | null;
 	stagePaper?: (paper: PaperNode, seedId: string, source: string) => Promise<void> | void;
 	createNote?: (filename: string, markdown: string, folder?: string) => Promise<string | void>;
 	lookupLiteratureNote?: (paper: PaperNode) => { path: string; reading: ReadingStatus | null; alternatives?: string[] } | null;
@@ -73,6 +75,7 @@ const viewStates = new Map<string, EmbedViewState>();
 
 /** Reading view and Live Preview share this DOM. It does not import Obsidian. */
 export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
+	const library = (): LibraryBridge | null => deps.libraryBridge?.() ?? null;
 	const saveReading = (paper: PaperNode, seedId: string, reading: ReadingStatus, previous: ReadingStatus, source: string): Promise<void> =>
 		saveReadingState({ projects: deps.getSettings().researchProjects, seedId, paper, reading, previous,
 			persist: () => deps.stagePaper?.(paper, seedId, source), syncNote: deps.syncLiteratureReading }).catch((error: unknown) => {
@@ -247,7 +250,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const pool = similarityExplorer.result?.graph ?? currentGraph;
 		if (pool) showDetail(pool.nodes.find(paper => paper.isSeed) ?? null, pool, null);
 	});
-	const similarityExplorer = mountSimilarityExplorer(stage, requestLibraryBridge, () => {
+	const similarityExplorer = mountSimilarityExplorer(stage, library, () => {
 		if (!alive) return;
 		refreshSimilarityScores();
 		const current = similarityExplorer.result?.graph.nodes.find(paper => paper.id === selected?.id)
@@ -291,7 +294,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const revision = ++storedTextRevision, target = currentGraph;
 		if (storedTextGraph !== target) { storedText = []; storedTextGraph = target; }
 		refreshSimilarityScores();
-		const bridge = requestLibraryBridge();
+		const bridge = library();
 		if (!target || !bridge?.textEvidence) return;
 		void bridge.textEvidence(target.nodes).then(rows => {
 			if (!alive || storedTextRevision !== revision || currentGraph !== target) return;
@@ -327,7 +330,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		seedItem.hidden = !scopedActive && !deps.openGraph;
 		seedItem.disabled = paper.isSeed;
 		seedItem.textContent = scopedActive ? tr("设为种子论文", "Set as seed paper") : tr("在图谱中打开", "Open in graph");
-		paintLocalPaperAction(nodeMenu, paper, requestLibraryBridge(), true);
+		paintLocalPaperAction(nodeMenu, paper, library(), true);
 		nodeMenu.dataset.paperId = paper.id;
 		nodeMenu.hidden = false;
 		placeNodeMenu(stage, nodeMenu, x, y);
@@ -711,10 +714,10 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	};
 
 	const incompleteCitationChecks = new WeakSet<SimilarityGraph>();
-	surface.apiStatus.read = () => graphApiStatus(currentGraph, layoutMode === "radial" && similarityKind === "text" ? requestLibraryBridge() : null, similarityExplorer.apiError, Boolean(currentGraph && incompleteCitationChecks.has(currentGraph)));
+	surface.apiStatus.read = () => graphApiStatus(currentGraph, layoutMode === "radial" && similarityKind === "text" ? library() : null, similarityExplorer.apiError, Boolean(currentGraph && incompleteCitationChecks.has(currentGraph)));
 	const nodePopover = mountNodePopover(stage, canvas, map, () => !body.classList.contains("is-sidebar-collapsed"));
 	map.onSelect = (paper) => {
-		nodePopover.show(paper, similarityKind, comparison[similarityKind].get(paper?.id ?? ""), comparison.details.get(paper?.id ?? ""), requestLibraryBridge());
+		nodePopover.show(paper, similarityKind, comparison[similarityKind].get(paper?.id ?? ""), comparison.details.get(paper?.id ?? ""), library());
 		if (paper && currentGraph) showDetail(paper, currentGraph, null);
 		else placeDetailPlaceholder();
 	};

@@ -21,7 +21,8 @@ and sizing separate. There is no separate backend owned by this plugin.
 | Scholarly source adapters | src/openalex.ts, src/citation-sources.ts, src/obsidian-http.ts |
 | Per-service request lanes and shared rate-limit pauses | src/provider-limits.ts, src/provider-pause-file.ts |
 | Vault-owned paper actions and bookmark migration | src/paper-library.ts, src/vault-paper-library.ts, src/workflow/bookmark-migration.ts |
-| Literature notes and optional host integration | src/vault-note.ts, src/library-bridge.ts |
+| Literature notes and the graph's library interface | src/vault-note.ts, src/library-bridge.ts |
+| Paper library over the research CLI (holdings, availability, Save, Bookmark, SPECTER2, discovery, labels) | src/research-library.ts, src/research-tools.ts, src/open-access-queue.ts, src/availability-policy.ts, src/fetched-evidence.ts, src/paper-labels.ts |
 | Question-scoped discovery | src/question-workspace.ts, src/discovery-graph.ts |
 | Optional research narrative | src/narrative.ts, src/llm.ts |
 
@@ -66,8 +67,10 @@ The explorer coordinates pending/error/empty state, optional local text enrichme
 guards. Pane and embed mounting choose an explicit task independently of the layout. Similarity
 source graphs and results are transient; citation sessions and saved snapshots remain separate.
 
-The optional LibraryBridge supplies local holdings, text evidence, and discovery capabilities.
-Missing capabilities must leave citation exploration usable. Retrieval UI distinguishes pending,
+ResearchLibrary supplies local holdings, text evidence, and discovery through the LibraryBridge
+interface. It runs the research repository's CLI and availability worker as child processes
+(src/research-tools.ts) and never loads repository modules. Without a configured research
+repository it is absent and citation exploration still works. Retrieval UI distinguishes pending,
 failed, empty, and ready results and exposes retry and compared/displayed counts.
 
 ## Repository layout and generated files

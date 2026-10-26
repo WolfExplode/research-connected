@@ -1,3 +1,4 @@
+import { reportFetched, type FetchedVector } from "./fetched-evidence";
 import { tr } from "./i18n";
 import type { GetJson } from "./openalex";
 import { cleanAbstractText, normalizeDoi } from "./paper";
@@ -152,6 +153,7 @@ export class SemanticScholarClient {
 			? "citationCount,referenceCount,externalIds,embedding.specter_v2"
 			: "citationCount,referenceCount,externalIds";
 		const out = new Map<string, S2Counts>();
+		const fetched: FetchedVector[] = [];
 		this.embeddingModel = null;
 		for (let i = 0; i < dois.length; i += 500) {
 			const chunk = dois.slice(i, i + 500);
@@ -187,6 +189,7 @@ export class SemanticScholarClient {
 			}
 			if (!ok) throw lastError;
 			for (const item of json as Array<{
+				paperId?: string | null;
 				citationCount?: number | null;
 				referenceCount?: number | null;
 				externalIds?: Record<string, string | null> | null;
@@ -198,6 +201,7 @@ export class SemanticScholarClient {
 				const vector = item.embedding?.model === "specter_v2" && Array.isArray(candidate) && candidate.length === 768
 					&& candidate.every(Number.isFinite) && candidate.some(value => value !== 0) ? candidate : null;
 				if (vector && item.embedding?.model && !this.embeddingModel) this.embeddingModel = item.embedding.model;
+				if (vector && typeof item.paperId === "string" && item.paperId) fetched.push({ doi, paperId: item.paperId, vector });
 				out.set(doi, {
 					citationCount: typeof item.citationCount === "number" ? item.citationCount : null,
 					referenceCount: typeof item.referenceCount === "number" ? item.referenceCount : null,
@@ -205,6 +209,7 @@ export class SemanticScholarClient {
 				});
 			}
 		}
+		reportFetched({ vectors: fetched });
 		return out;
 	}
 

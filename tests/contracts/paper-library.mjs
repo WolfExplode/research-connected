@@ -39,27 +39,28 @@ function harness() {
   return { app, props, bodies, files, settings };
 }
 try {
-  const h = harness(), library = vaultPaperLibrary(h.app, () => h.settings, () => null);
-  assert.equal(vaultPaperLibrary(h.app, () => h.settings), library, "all surfaces share a vault service");
-  await library.setBookmark(paper, true);
-  const note = library.read(paper).note;
-  assert.ok(note); assert.equal(library.bookmarks().length, 1);
-  assert.equal(h.props.get(note).bookmark, true); assert.equal(h.props.get(note).held, false);
-  h.props.get(note).quality = "high"; h.bodies.set(note, h.bodies.get(note) + "Human notes\n");
-  await library.setBookmark({ ...paper, id: "alias" }, false);
-  assert.equal(library.bookmarks().length, 0); assert.ok(h.files.has(note));
-  assert.match(h.bodies.get(note), /Human notes/); assert.equal(h.props.get(note).quality, "high");
-  await library.migrateBookmark(paper, "Old project");
-  assert.equal(library.read(paper).bookmark, false, "migration honors a deliberate unbookmark");
-  await library.setBookmark(paper, true);
-  const state = await library.save(paper);
-  assert.equal(state.note, note); assert.equal(state.bookmark, true); assert.equal(state.held, false);
-  assert.equal(h.props.get(note).needs_reason, "download-unavailable");
-  assert.ok(h.props.get(note).acquisition_attempted_at);
-  h.props.get(note).openalex = "W12";
-  invalidatePaperLibrary(h.app, note);
-  assert.equal(library.bookmarks()[0].paper.openAlexUrl, "https://openalex.org/W12");
-  assert.equal(library.read({ ...paper, id: `local:${note}` }).bookmark, true);
+  // Without research tools, Save and Bookmark refuse instead of writing a second kind of note.
+  const bare = harness(), library = vaultPaperLibrary(bare.app, () => bare.settings, () => null);
+  assert.equal(vaultPaperLibrary(bare.app, () => bare.settings, () => null), library, "all surfaces share a vault service");
+  await assert.rejects(library.setBookmark(paper, true), /research tools/);
+  await assert.rejects(library.save(paper), /research tools/);
+  assert.equal(bare.files.size, 0, "only the research tools create paper notes");
+  assert.match(library.read(paper).error, /research tools/, "the refusal is shown on the paper");
+
+  // The tools write the note; confirmed state shows until Obsidian indexes it.
+  const kept = harness(), bookmarkCalls = [];
+  const tools = {
+    read: () => ({ local: { state: "absent", note: null, files: [] } }),
+    bookmark: async (_paper, value, options) => { bookmarkCalls.push([value, options.onlyIfMissing, options.source]); return { local: { state: "note-only", note: "Research/Papers/Example.md", files: [], bookmark: value } }; },
+  };
+  const keptLibrary = vaultPaperLibrary(kept.app, () => kept.settings, () => tools);
+  await keptLibrary.setBookmark(paper, true);
+  assert.equal(keptLibrary.read(paper).note, "Research/Papers/Example.md"); assert.equal(keptLibrary.read(paper).bookmark, true);
+  assert.equal(keptLibrary.bookmarks().length, 1, "a confirmed bookmark shows before Obsidian indexes the note");
+  await keptLibrary.migrateBookmark(paper, "Old project");
+  assert.deepEqual(bookmarkCalls.at(-1), [true, true, "Old project"], "migration asks the tools to keep an existing choice");
+  invalidatePaperLibrary(kept.app, "Research/Papers/Example.md");
+  assert.equal(keptLibrary.bookmarks().length, 0, "a note change drops confirmed state in favor of the indexed note");
 
   const remote = harness(); let calls = 0, release;
   const bridge = { read: () => ({ local: { state: "absent", note: null, files: [] } }), save: async () => { calls++; await new Promise(resolve => { release = resolve; }); return { local: { state: "note-only", note: "Research/Papers/Remote.md", bookmark: true, reason: "no-oa-copy" } }; } };
@@ -70,11 +71,6 @@ try {
   await first; assert.equal(calls, 1); assert.equal(integrated.read(paper).reason, "no-oa-copy");
   assert.equal(remote.files.size, 0, "the bridge owns canonical source creation");
 
-  const older = harness(), oldBridge = { read: () => ({ local: { state: "absent", note: null, files: [] } }) };
-  const olderLibrary = vaultPaperLibrary(older.app, () => older.settings, () => oldBridge);
-  await assert.rejects(olderLibrary.migrateBookmark(paper, "Legacy graph"), /Update and reload Research Vault/);
-  assert.equal(older.files.size, 0, "an older bridge must not bypass canonical source creation during migration");
-
   const legacy = { W1: { name: "First graph", paperStates: { W12: { paper, staged: true, source: "OpenAlex" } } } };
   let fail = true, imports = 0;
   const migrationLibrary = { migrateBookmark: async () => { imports++; } };
@@ -83,5 +79,5 @@ try {
   fail = false; await migrateProjectBookmarks(legacy, migrationLibrary, async () => {});
   assert.equal(legacy.W1.paperStates.W12.staged, false); assert.equal(imports, 2);
   await migrateProjectBookmarks(legacy, migrationLibrary, async () => {}); assert.equal(imports, 2);
-  console.log("vault-wide bookmarks, acquisition delegation, note preservation and migration receipts passed");
+  console.log("tool-only note writes, acquisition delegation and migration receipts passed");
 } finally { if (oldWindow === undefined) delete globalThis.window; else globalThis.window = oldWindow; }

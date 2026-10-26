@@ -34,6 +34,16 @@ export interface ConnectedPapersSettings {
 	literatureTemplate: string;
 	/** Frontmatter key used to recognize an existing note's DOI. */
 	literatureDoiProperty: string;
+	/** Research repository holding Tools/research/cli.js. Empty means the folder containing this vault. */
+	researchRepository: string;
+	/** Node executable that runs the research tools: a path, or a command on PATH. */
+	researchNode: string;
+	/** Check open access for papers in displayed graphs in background batches. */
+	autoOpenAccess: boolean;
+	/** Fetch missing SPECTER2 embeddings when graphs or library similarity load. */
+	autoSpecter2: boolean;
+	/** Research Vault's tool settings were copied once; later edits there are not read. */
+	researchToolsImported?: boolean;
 	stagedPapers: StagedPaper[];
 	/** Deep-dug paper ids kept per seed OpenAlex id, restored on rebuild. */
 	graftedBySeed: Record<string, string[]>;
@@ -66,6 +76,10 @@ export const DEFAULT_SETTINGS: ConnectedPapersSettings = {
 	literatureFilename: "",
 	literatureTemplate: "",
 	literatureDoiProperty: "doi",
+	researchRepository: "",
+	researchNode: "node",
+	autoOpenAccess: true,
+	autoSpecter2: true,
 	stagedPapers: [],
 	graftedBySeed: {},
 	researchProjects: {},

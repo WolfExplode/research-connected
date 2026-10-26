@@ -8,6 +8,7 @@ import { verifyWorkIdentity, verifyWorkIdentityPipeline } from "./verify-work-id
 import { verifyEvidence } from "./verify-evidence";
 import { verifyS2RateLimit } from "./verify-s2-rate-limit";
 import { verifyProviderLimits } from "./verify-provider-limits";
+import { verifyResearchLibrary } from "./verify-research-library";
 import { verifyDoiRecovery } from "./verify-doi-recovery";
 import { verifyComparison } from "./verify-comparison";
 import { verifyConnections } from "./verify-connections";
@@ -857,6 +858,7 @@ async function main(): Promise<void> {
 	await verifyWorkflow();
 	await verifyS2RateLimit();
 	await verifyProviderLimits();
+	await verifyResearchLibrary();
 	unit();
 	await verifyWorkIdentityPipeline();
 	semanticChecks();

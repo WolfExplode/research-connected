@@ -8,12 +8,13 @@ import { openExternal } from "./open-external";
 import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
 import type { ResearchProject } from "./project-state";
-import { requestLibraryBridge } from "./library-bridge";
+import type { LibraryBridge } from "./library-bridge";
 
 export interface GraphHost {
 	getSettings(): ConnectedPapersSettings;
 	saveSettings(notify?: boolean): Promise<void>;
 	migrateBookmarks?(): Promise<void>;
+	researchLibrary?(): LibraryBridge | null;
 }
 
 export class ConnectedPapersView extends ItemView {
@@ -69,7 +70,7 @@ export class ConnectedPapersView extends ItemView {
 		if (header && headerStatus && actions) header.insertBefore(headerStatus, actions);
 		this.headerStatus = headerStatus ?? null;
 		this.appHandle = mountGraphApp(this.contentEl, {
-			libraryBridge: requestLibraryBridge,
+			libraryBridge: () => this.host.researchLibrary?.() ?? null,
 			getSettings: () => this.host.getSettings(),
 			persistSettings: () => this.host.saveSettings(false),
 			getJson: obsidianGetJson,
@@ -81,7 +82,7 @@ export class ConnectedPapersView extends ItemView {
 			syncLiteratureReading: (paper, reading) => syncLiteratureReading(this.app, paper, reading, this.host.getSettings().literatureDoiProperty),
 			rememberLiteratureNote,
 			retryBookmarkMigration: this.host.migrateBookmarks ? () => this.host.migrateBookmarks!() : undefined,
-			paperLibrary: vaultPaperLibrary(this.app, () => this.host.getSettings()),
+			paperLibrary: vaultPaperLibrary(this.app, () => this.host.getSettings(), () => this.host.researchLibrary?.() ?? null),
 			stagePaper: async () => { await this.host.saveSettings(false); },
 			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
 			statusHost: this.headerStatus ?? undefined,

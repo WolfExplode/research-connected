@@ -1,3 +1,4 @@
+import { openAccessWorks, reportFetched } from "./fetched-evidence";
 import { tr } from "./i18n";
 import { OPENALEX_API } from "./constants";
 import { limitedRequest, ProviderPausedError } from "./provider-limits";
@@ -44,7 +45,8 @@ export interface SampledWorks {
 	error?: string;
 }
 
-const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts,primary_location,biblio";
+// Open-access fields ride along so the research tools' availability cache needs no second request.
+const LIST_SELECT = "id,display_name,publication_year,cited_by_count,doi,authorships,language,type,is_retracted,topics,concepts,primary_location,biblio,open_access,best_oa_location,locations";
 const WORK_SELECT = `${LIST_SELECT},abstract_inverted_index,referenced_works,related_works`;
 const DETAIL_SELECT = "id,referenced_works,abstract_inverted_index";
 
@@ -270,7 +272,9 @@ export class OpenAlexClient {
 		const email = validEmail(this.auth.contactEmail);
 		if (email) url.searchParams.set("mailto", email);
 		try {
-			return await limitedRequest(url.toString(), () => this.getJson(url.toString(), { headers: this.headers() }));
+			const json = await limitedRequest(url.toString(), () => this.getJson(url.toString(), { headers: this.headers() }));
+			reportFetched({ works: openAccessWorks(json) });
+			return json;
 		} catch (error) {
 			if (error instanceof OpenAlexError || error instanceof ProviderPausedError) throw error;
 			throw new OpenAlexError(explainStatus(undefined));

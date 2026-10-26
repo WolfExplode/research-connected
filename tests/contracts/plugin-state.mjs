@@ -3,7 +3,7 @@ import { build } from "esbuild";
 
 const bundle = await build({ entryPoints: ["src/main.ts"], bundle: true, platform: "node", format: "cjs", external: ["obsidian"], write: false, logLevel: "silent" });
 class Plugin {}
-const obsidian = { Plugin, ItemView: class {}, PluginSettingTab: class {}, MarkdownRenderChild: class {}, getLanguage: () => "en" };
+const obsidian = { Plugin, ItemView: class {}, PluginSettingTab: class {}, MarkdownRenderChild: class {}, Modal: class {}, TFile: class {}, getLanguage: () => "en" };
 const loaded = { exports: {} };
 new Function("module", "exports", "require", bundle.outputFiles[0].text)(loaded, loaded.exports, () => obsidian);
 const PluginClass = loaded.exports.default;
@@ -88,20 +88,24 @@ assert.deepEqual(helpLinks.map(({ tag, text, href, attr }) => [tag, text, href, 
 	["a", "Report a bug", "https://github.com/Abe-Junwei/research-connected/issues/new?template=bug_report.yml", { target: "_blank", rel: "noopener noreferrer" }],
 	["a", "Request a feature", "https://github.com/Abe-Junwei/research-connected/issues/new?template=feature_request.yml", { target: "_blank", rel: "noopener noreferrer" }],
 ]);
-assert.equal(controls.size, 17, "all non-LLM settings must remain available");
+assert.equal(controls.size, 21, "all non-LLM settings must remain available");
 assert.equal(controls.get("OpenAlex API key").inputEl.type, "password");
 await controls.get("Maximum nodes").change(999);
 assert.equal(store.settings.maxNodes, 300);
 await controls.get("DOI property name").change("  ");
 assert.equal(store.settings.literatureDoiProperty, "doi");
+await controls.get("Node executable").change("  ");
+assert.equal(store.settings.researchNode, "node", "an empty Node executable falls back to node on PATH");
+await controls.get("Research tools repository").change(" C:/research ");
+assert.equal(store.settings.researchRepository, "C:/research");
 await controls.get("Enable LLM research narrative").change(true);
 assert.equal(tab.updates, 1, "LLM visibility must refresh through the host update API");
 renderSettings();
-assert.equal(controls.size, 21);
+assert.equal(controls.size, 25);
 assert.equal(controls.get("LLM API key").inputEl.type, "password");
 await controls.get("LLM endpoint").change(" https://example.test/chat/completions ");
 assert.equal(store.settings.llmEndpoint, "https://example.test/chat/completions");
-assert.equal(saves, 4);
+assert.equal(saves, 6);
 store.saveSettings = async () => { throw new Error("disk full"); };
 await assert.rejects(controls.get("Contact email (mailto)").change("a@example.test"), /disk full/);
 console.log("settings search, persistence, visibility and secret masking checks passed");

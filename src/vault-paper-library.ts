@@ -1,6 +1,6 @@
 import { TFile, type App } from "obsidian";
-import { literatureFilename, literatureMarkdown } from "./export-graph";
-import { requestLibraryBridge, type LibraryAvailability, type LibraryBridge } from "./library-bridge";
+import { tr } from "./i18n";
+import type { LibraryAvailability, LibraryBridge } from "./library-bridge";
 import { lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote } from "./vault-note";
 import { paperDois } from "./work-identity";
 import type { ConnectedPapersSettings } from "./settings-model";
@@ -12,11 +12,13 @@ const libraries = new WeakMap<App, { library: PaperLibrary; invalidate(path?: st
 const text = (value: unknown): string => typeof value === "string" ? value : "";
 const bookmarked = (props: Record<string, unknown>): boolean => Object.prototype.hasOwnProperty.call(props, "bookmark") ? props.bookmark === true : props.favorite === true;
 const key = (paper: PaperNode): string => paperDois(paper)[0] || paper.openAlexUrl || paper.id;
+// The research tools are the only writer of paper notes; without them, Save and Bookmark explain why.
+const noTools = (): string => tr("保存和收藏需要研究工具。请在 Research Connected 设置中配置研究工具仓库。", "Save and Bookmark need the research tools. Set the research tools repository in Research Connected settings.");
 
 export function invalidatePaperLibrary(app: App, path?: string): void { libraries.get(app)?.invalidate(path); }
 
 /** One shared adapter per vault, so panes/embeds cannot create duplicate notes or race toggles. */
-export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSettings, bridge: () => LibraryBridge | null = requestLibraryBridge): PaperLibrary {
+export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSettings, bridge: () => LibraryBridge | null): PaperLibrary {
 	const existing = libraries.get(app); if (existing) return existing.library;
 	const confirmed = new Map<string, { paper: PaperNode; state: LibraryPaperState }>();
 	const errors = new Map<string, string>();
@@ -45,26 +47,6 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 		if (state.note) { const props = propsAt(state.note), reading = local.reading || props.reading_status || props["rc-status"]; rememberLiteratureNote(paper, state.note, reading === "read" ? "read" : reading === "to-read" ? "to-read" : "unread"); }
 		return state;
 	}
-	async function ensure(paper: PaperNode): Promise<string> {
-		const current = read(paper);
-		if (current.ambiguous) throw new Error("Multiple literature notes match. Review them before saving.");
-		if (current.note) return current.note;
-		const config = settings(), fields = { project: "", relation: "", status: "unread" as const };
-		const folder = config.literatureFolder.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") || "Research/Papers";
-		let directory = "";
-		for (const part of folder.split("/")) { if (!part || part === "." || part === "..") throw new Error("Invalid literature folder"); directory = directory ? `${directory}/${part}` : part; if (!app.vault.getAbstractFileByPath(directory)) await app.vault.createFolder(directory); }
-		const base = literatureFilename(paper, config.literatureFilename, fields).replace(/\.md$/i, "");
-		let path = `${folder}/${base}.md`, suffix = 2;
-		while (app.vault.getAbstractFileByPath(path)) path = `${folder}/${base} ${suffix++}.md`;
-		let markdown = literatureMarkdown(paper, config.literatureTemplate, fields);
-		markdown = markdown.replace(/^---\n/, "---\ntype: source\nheld: false\nreading_status: unread\nbookmark: false\n");
-		if (!markdown.includes("## Reading notes")) markdown += "\n## Reading notes\n";
-		if (paper.abstract) markdown += `\n## Abstract\n${paper.abstract}\n`;
-		await app.vault.create(path, markdown);
-		const state = { note: path, held: current.held, bookmark: false };
-		confirmed.set(key(paper), { paper, state }); rememberLiteratureNote(paper, path, "unread");
-		return path;
-	}
 	async function serial<T>(paper: PaperNode, operation: () => Promise<T>): Promise<T> {
 		const id = key(paper), prior = pending.get(id) ?? Promise.resolve();
 		errors.delete(id);
@@ -74,22 +56,8 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 	async function bookmark(paper: PaperNode, value: boolean, onlyIfMissing = false, source = "", reading?: ReadingStatus): Promise<void> {
 		await serial(paper, async () => {
 			const host = bridge();
-			if (onlyIfMissing && host && !host.bookmark) throw new Error("Update and reload Research Vault before migrating legacy bookmarks.");
-			if (host?.bookmark) remember(paper, await host.bookmark(paper, value, { onlyIfMissing, source, reading }));
-			else {
-				const current = read(paper), existed = Boolean(current.note), note = await ensure(paper);
-				const file = app.vault.getAbstractFileByPath(note); if (!(file instanceof TFile)) throw new Error("The literature note is unavailable");
-				let saved = current.bookmark;
-				await app.fileManager.processFrontMatter(file, (props: Record<string, unknown>) => {
-					const hasChoice = Object.prototype.hasOwnProperty.call(props, "bookmark") || Object.prototype.hasOwnProperty.call(props, "favorite");
-					saved = onlyIfMissing && existed && hasChoice ? bookmarked(props) : value;
-					props.bookmark = saved; delete props.favorite;
-					if (!existed && reading) { props.reading_status = reading; props["rc-status"] = reading; }
-					if (source) props.discovery_sources = [...new Set([...(Array.isArray(props.discovery_sources) ? props.discovery_sources.filter((item): item is string => typeof item === "string") : []), source])];
-				});
-				confirmed.set(key(paper), { paper, state: { ...read(paper), note, bookmark: saved } });
-				if (!existed && reading) rememberLiteratureNote(paper, note, reading);
-			}
+			if (!host?.bookmark) throw new Error(noTools());
+			remember(paper, await host.bookmark(paper, value, { onlyIfMissing, source, reading }));
 			changed();
 		});
 	}
@@ -104,13 +72,8 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 				let state = read(paper); if (state.ambiguous) throw new Error("Multiple literature notes match. Review them before saving.");
 				if (state.held) return state;
 				const host = bridge();
-				if (host?.save) state = remember(paper, await host.save(paper));
-				else {
-					const note = await ensure(paper), file = app.vault.getAbstractFileByPath(note);
-					if (!(file instanceof TFile)) throw new Error("The literature note is unavailable");
-					await app.fileManager.processFrontMatter(file, (props: Record<string, unknown>) => { props.needs = "you"; props.needs_reason = "download-unavailable"; props.acquisition_status = "failed"; props.acquisition_attempted_at = new Date().toISOString(); });
-					state = { ...read(paper), note, reason: "download-unavailable" }; confirmed.set(id, { paper, state });
-				}
+				if (!host?.save) throw new Error(noTools());
+				state = remember(paper, await host.save(paper));
 				changed(); return state;
 			});
 			downloads.set(id, task); void task.finally(() => { if (downloads.get(id) === task) downloads.delete(id); }).catch(() => {}); return task;
