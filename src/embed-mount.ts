@@ -294,9 +294,9 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		const revision = ++storedTextRevision, target = currentGraph;
 		if (storedTextGraph !== target) { storedText = []; storedTextGraph = target; }
 		refreshSimilarityScores();
-		const bridge = library();
-		if (!target || !bridge?.textEvidence) return;
-		void bridge.textEvidence(target.nodes).then(rows => {
+		const libraryService = library();
+		if (!target || !libraryService?.textEvidence) return;
+		void libraryService.textEvidence(target.nodes).then(rows => {
 			if (!alive || storedTextRevision !== revision || currentGraph !== target) return;
 			storedText = rows; refreshSimilarityScores();
 			if (selected) showDetail(selected, target, null);

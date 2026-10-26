@@ -442,9 +442,9 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 		const revision = ++storedTextRevision, target = graph;
 		if (storedTextGraph !== target) { storedText = []; storedTextGraph = target; }
 		refreshSimilarityScores();
-		const bridge = deps.researchLibrary?.();
-		if (!target || exploreMode !== "citation" || !bridge?.textEvidence) return;
-		void bridge.textEvidence(target.nodes).then(rows => {
+		const libraryService = deps.researchLibrary?.();
+		if (!target || exploreMode !== "citation" || !libraryService?.textEvidence) return;
+		void libraryService.textEvidence(target.nodes).then(rows => {
 			if (disposed || revision !== storedTextRevision || graph !== target || exploreMode !== "citation") return;
 			storedText = rows; refreshSimilarityScores();
 			if (selectedPaper && tab === "graph") showDetail(selectedPaper);
@@ -1030,13 +1030,13 @@ export function mountGraphApp(root: HTMLElement, deps: AppDeps): GraphAppHandle 
 				: `PaperQA2 retrieval rank: ${row.rank ?? "unknown"}. Retrieval position, not a similarity score.`;
 			el(detail, "p", "cpo-fact-note", scoreText);
 			if (row.label) el(detail, "p", "cpo-fact-note", `Question judgment: ${row.label}`);
-			const bridge = deps.researchLibrary?.();
-			if (bridge) {
+			const libraryService = deps.researchLibrary?.();
+			if (libraryService) {
 				const actions = el(detail, "div", "cpo-paper-actions");
 				for (const [target, label] of [[vaultPath(row.note), tr("打开笔记", "Open result note")], [vaultPath(row.pdf || row.file), tr("打开 PDF", "Open result PDF")]]) if (target) {
-					const button = el(actions, "button", "cpo-ghost", label!); button.type = "button"; button.addEventListener("click", () => bridge.open(target));
+					const button = el(actions, "button", "cpo-ghost", label!); button.type = "button"; button.addEventListener("click", () => libraryService.open(target));
 				}
-				paintLibraryAvailability(detail, paper, bridge, deps.openExternal, doiOptions(paper));
+				paintLibraryAvailability(detail, paper, libraryService, deps.openExternal, doiOptions(paper));
 			}
 			const doi = normalizeDoi(paper.doiUrl);
 			if (doi) {

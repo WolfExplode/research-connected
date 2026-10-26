@@ -11,7 +11,7 @@ import type { PaperNode } from "./types";
 import type { CitationComparisonResult } from "./workflow/comparison-citations";
 
 /** Transient search UI: never writes library files or replaces a saved citation graph. */
-export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => PaperLibraryService | null,
+export function mountSimilarityExplorer(stage: HTMLElement, libraryService: () => PaperLibraryService | null,
 	onChange: () => void, onNeighbors: (paper: PaperNode) => Promise<boolean> | void,
 	onNeighborActionChange?: () => void,
 	loadCitations?: (graph: SimilarityGraph) => Promise<CitationComparisonResult>,
@@ -21,7 +21,7 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => PaperL
 	for (const [value, title] of [["library", tr("我的文库", "My library")], ["external", options?.literature ? tr("更广泛文献", "Wider literature") : tr("已获取论文", "Fetched papers")], ["both", tr("两者", "Both")]]) {
 		const option = createEl("option"); option.value = value!; option.textContent = title!; scope.append(option);
 	}
-	scope.value = bridge()?.textLibrary ? "library" : "external";
+	scope.value = libraryService()?.textLibrary ? "library" : "external";
 	const count = createCountControl({ label: "Similarity result limit", presetLabel: "Choose result limit preset",
 		initial: 50, max: 300, presets: [20, 50, 100, 300], onChange });
 	const limitLabel = count.element, limit = count.input;
@@ -79,7 +79,7 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => PaperL
 	});
 	function invalidate(): void { revision++; library = null; pending = false; error = ""; textKey = ""; textRevision++; }
 	function load(): void {
-		const provider = bridge();
+		const provider = libraryService();
 		if (typeof provider?.textLibrary !== "function" || library || pending || error) return;
 		const token = revision; pending = true;
 		void provider.textLibrary().then(rows => {
@@ -131,7 +131,7 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => PaperL
 				compare.addEventListener("click", () => { center = { ...paper, isSeed: true }; changed(); }); parent.append(compare);
 			}
 			paintAbstractCard(parent, paper, () => paper.abstract || tr("没有摘要或研究总结。", "No abstract or study summary available."));
-			const provider = bridge();
+			const provider = libraryService();
 			if (provider) {
 
 				paintLibraryAvailability(parent, paper, provider, openExternal, recovery);
@@ -148,14 +148,14 @@ export function mountSimilarityExplorer(stage: HTMLElement, bridge: () => PaperL
 			if (base !== graph) {
 				base = graph; center = undefined;
 			}
-			const available = library !== null || typeof bridge()?.textLibrary === "function";
+			const available = library !== null || typeof libraryService()?.textLibrary === "function";
 			for (const option of Array.from(scope.options)) option.disabled = option.value !== "external" && !available;
 			if (!available) scope.value = "external";
 			// Local evidence also improves paired scores for the external pool without downloading anything.
 			if (available) load();
 			const source = center ?? graph.nodes.find(paper => paper.isSeed);
 			if (source) loadLiterature(source);
-			const provider = bridge();
+			const provider = libraryService();
 			const enrichment = source ? [source, ...(remote ?? [])] : [];
 			const key = enrichment.map(paper => `${paper.id}:${paper.abstract}`).join("\n");
 			if (provider?.textEvidence && enrichment.length && textKey !== key) {

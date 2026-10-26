@@ -7,7 +7,7 @@ import type { PaperNode } from "../../src/types";
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
-/** Runs in a browser or Obsidian against isolated in-memory settings and a controlled bridge. */
+/** Runs in a browser or Obsidian against isolated in-memory settings and a controlled library service. */
 export async function verifyIntegratedWorkflow(root: HTMLElement): Promise<string> {
 	const first = "Research/Questions/First.md", second = "Research/Questions/Second.md";
 	const seed: PaperNode = { id: "W1", title: "Original citation seed", isSeed: true, origin: "seed", doiUrl: null, year: 2000, citedByCount: 1, authors: "Author", authorList: ["Author"], abstract: "Held abstract", openAlexUrl: "https://openalex.org/W1", language: "en", workType: "article", venue: null, retracted: false, concepts: [] };

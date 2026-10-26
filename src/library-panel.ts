@@ -52,10 +52,10 @@ export interface DoiRecoveryAction {
 }
 
 /** A single local action shared by the identity card and graph context menu. */
-export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bridge: PaperLibraryService | null | undefined, menu = false): void {
+export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, libraryService: PaperLibraryService | null | undefined, menu = false): void {
 	parent.querySelector(menu ? ".cpo-local-paper-menu" : ".cpo-local-paper")?.remove();
-	if (!bridge) return;
-	const local = bridge.read(paper).local;
+	if (!libraryService) return;
+	const local = libraryService.read(paper).local;
 	if (local.state === "absent" || local.state === "ambiguous") return;
 	const target = local.note ?? local.files[0];
 	if (!target) return;
@@ -64,7 +64,7 @@ export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bri
 	button.type = "button";
 	setHoverHint(button, `${label} · ${target}`);
 	if (menu) button.setAttribute("role", "menuitem");
-	button.addEventListener("click", () => { bridge.open(target); if (menu) parent.hidden = true; });
+	button.addEventListener("click", () => { libraryService.open(target); if (menu) parent.hidden = true; });
 	if (menu) parent.append(button);
 	else {
 		let actions = parent.querySelector<HTMLElement>(":scope > .cpo-paper-actions");
@@ -76,8 +76,8 @@ export function paintLocalPaperAction(parent: HTMLElement, paper: PaperNode, bri
 	}
 }
 
-export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, bridge: PaperLibraryService, openExternal: (url: string) => void, recovery?: DoiRecoveryAction): void {
-	bridge.prefetch?.([paper]);
+export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, libraryService: PaperLibraryService, openExternal: (url: string) => void, recovery?: DoiRecoveryAction): void {
+	libraryService.prefetch?.([paper]);
 	const card = createEl("section", { cls: "cpo-card cpo-library-availability" });
 	parent.append(card);
 
@@ -89,7 +89,7 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 	const feedback = createEl("p", { cls: "cpo-availability-feedback", attr: { role: "status", "aria-live": "polite" } });
 	const paint = (data: LibraryAvailability): void => {
 		const identity = parent.querySelector<HTMLElement>(":scope > .cpo-paper-identity");
-		if (identity) paintLocalPaperAction(identity, paper, bridge);
+		if (identity) paintLocalPaperAction(identity, paper, libraryService);
 		providers.replaceChildren();
 		buttons.length = 0;
 		for (const [name, label] of [["oa", tr("开放获取", "Open access")], ["scihub", "Sci-Hub"]]) {
@@ -146,7 +146,7 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 					feedback.textContent = "";
 					const idleLabel = check.textContent;
 					check.textContent = tr("正在查询…", "Checking…");
-					void bridge.check(paper, { provider: name, refresh: true }).then(next => {
+					void libraryService.check(paper, { provider: name, refresh: true }).then(next => {
 						if (card.isConnected) { paint(next); feedback.textContent = ""; }
 					}).catch(() => {
 						if (card.isConnected) {
@@ -159,7 +159,7 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 			}
 		}
 	};
-	const initial = bridge.read(paper);
+	const initial = libraryService.read(paper);
 	paint(initial);
 	if (initial.local.note) {
 		const note = initial.local.note;
@@ -170,7 +170,7 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 			label.addEventListener("click", () => window.dispatchEvent(new CustomEvent("research-connected-label-paper", { detail: { note } })));
 			actions.append(label);
 		}
-		if (bridge.discovery && note.startsWith("Research/Papers/")) {
+		if (libraryService.discovery && note.startsWith("Research/Papers/")) {
 			const related = createEl("button", { text: tr("查找本地相关论文", "Find related local papers") });
 			related.type = "button";
 			related.addEventListener("click", () => window.dispatchEvent(new CustomEvent("research-connected-open-discovery", { detail: { paper: note } })));

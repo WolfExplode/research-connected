@@ -18,7 +18,7 @@ const noTools = (): string => tr("保存和收藏需要研究工具。请在 Res
 export function invalidatePaperLibrary(app: App, path?: string): void { libraries.get(app)?.invalidate(path); }
 
 /** One shared adapter per vault, so panes/embeds cannot create duplicate notes or race toggles. */
-export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSettings, bridge: () => PaperLibraryService | null): PaperLibrary {
+export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSettings, libraryService: () => PaperLibraryService | null): PaperLibrary {
 	const existing = libraries.get(app); if (existing) return existing.library;
 	const confirmed = new Map<string, { paper: PaperNode; state: LibraryPaperState }>();
 	const errors = new Map<string, string>();
@@ -30,7 +30,7 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 	};
 	function readState(paper: PaperNode): LibraryPaperState {
 		const cached = confirmed.get(key(paper)); if (cached) return cached.state;
-		const local = bridge()?.read(paper).local;
+		const local = libraryService()?.read(paper).local;
 		if (local?.state === "ambiguous") return { note: null, held: false, bookmark: false, ambiguous: true };
 		const direct = paper.id.startsWith("local:") ? app.vault.getAbstractFileByPath(paper.id.slice(6)) : null;
 		const found = local?.note ? { path: local.note } : direct instanceof TFile && direct.extension === "md" ? { path: direct.path } : lookupLiteratureNote(app, paper, settings().literatureDoiProperty);
@@ -55,7 +55,7 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 	}
 	async function bookmark(paper: PaperNode, value: boolean, onlyIfMissing = false, source = "", reading?: ReadingStatus): Promise<void> {
 		await serial(paper, async () => {
-			const host = bridge();
+			const host = libraryService();
 			if (!host?.bookmark) throw new Error(noTools());
 			remember(paper, await host.bookmark(paper, value, { onlyIfMissing, source, reading }));
 			changed();
@@ -71,7 +71,7 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 			const task = serial(paper, async () => {
 				let state = read(paper); if (state.ambiguous) throw new Error("Multiple literature notes match. Review them before saving.");
 				if (state.held) return state;
-				const host = bridge();
+				const host = libraryService();
 				if (!host?.save) throw new Error(noTools());
 				state = remember(paper, await host.save(paper));
 				changed(); return state;

@@ -63,13 +63,13 @@ try {
   assert.equal(keptLibrary.bookmarks().length, 0, "a note change drops confirmed state in favor of the indexed note");
 
   const remote = harness(); let calls = 0, release;
-  const bridge = { read: () => ({ local: { state: "absent", note: null, files: [] } }), save: async () => { calls++; await new Promise(resolve => { release = resolve; }); return { local: { state: "note-only", note: "Research/Papers/Remote.md", bookmark: true, reason: "no-oa-copy" } }; } };
-  const integrated = vaultPaperLibrary(remote.app, () => remote.settings, () => bridge);
+  const libraryService = { read: () => ({ local: { state: "absent", note: null, files: [] } }), save: async () => { calls++; await new Promise(resolve => { release = resolve; }); return { local: { state: "note-only", note: "Research/Papers/Remote.md", bookmark: true, reason: "no-oa-copy" } }; } };
+  const integrated = vaultPaperLibrary(remote.app, () => remote.settings, () => libraryService);
   const first = integrated.save(paper), second = integrated.save({ ...paper, id: "alias" });
   assert.equal(first, second, "concurrent saves of one DOI share acquisition");
   await Promise.resolve(); await Promise.resolve(); release();
   await first; assert.equal(calls, 1); assert.equal(integrated.read(paper).reason, "no-oa-copy");
-  assert.equal(remote.files.size, 0, "the bridge owns canonical source creation");
+  assert.equal(remote.files.size, 0, "the research library owns canonical source creation");
 
   const legacy = { W1: { name: "First graph", paperStates: { W12: { paper, staged: true, source: "OpenAlex" } } } };
   let fail = true, imports = 0;

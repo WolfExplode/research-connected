@@ -44,13 +44,13 @@ export function mountNodePopover(stage: HTMLElement, canvas: HTMLCanvasElement, 
 	map.onDraw = position;
 	return {
 		hide,
-		show(paper: PaperNode | null, kind: SimilarityKind, score: number | undefined, comparison: TextComparison | undefined, bridge: PaperLibraryService | null | undefined): void {
+		show(paper: PaperNode | null, kind: SimilarityKind, score: number | undefined, comparison: TextComparison | undefined, libraryService: PaperLibraryService | null | undefined): void {
 			if (!paper) { hide(); return; }
 			paperId = paper.id;
 			body.replaceChildren();
 			paintMetadataCard(body, paper, null);
 			const identity = body.querySelector<HTMLElement>(".cpo-paper-identity");
-			if (identity) paintLocalPaperAction(identity, paper, bridge);
+			if (identity) paintLocalPaperAction(identity, paper, libraryService);
 			if (!paper.isSeed) paintComparisonCard(body, kind, score, comparison);
 			position();
 		},
