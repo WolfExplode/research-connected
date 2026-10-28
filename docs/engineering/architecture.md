@@ -23,8 +23,7 @@ and sizing separate. Its paper library runs on the research repository's CLI as 
 | Per-service request lanes, shared rate-limit pauses and the OpenAlex response cache | src/provider-limits.ts, src/provider-pause-file.ts, src/research-tools.ts |
 | Vault-owned paper actions | src/paper-library.ts, src/vault-paper-library.ts |
 | Literature notes and the graph's library interface and panel | src/vault-note.ts, src/library-panel.ts |
-| Paper library over the research CLI (holdings, availability, Save, Bookmark, SPECTER2, discovery, labels) | src/research-library.ts, src/research-tools.ts, src/open-access-queue.ts, src/availability-policy.ts, src/fetched-evidence.ts, src/paper-labels.ts |
-| Question-scoped discovery | src/question-workspace.ts, src/discovery-graph.ts |
+| Paper library over the research CLI (holdings, availability, Save, Bookmark, SPECTER2, library papers, labels) | src/research-library.ts, src/research-tools.ts, src/open-access-queue.ts, src/availability-policy.ts, src/fetched-evidence.ts, src/paper-labels.ts |
 | Optional research narrative | src/narrative.ts, src/llm.ts |
 
 The source root retains stable domain module names; workflow modules concentrate coordination that
@@ -36,8 +35,8 @@ can move together. Avoid file moves whose only effect is adding indirection to i
 **Paper** means one project-local work with traceable source records. Work identity logic owns
 alias resolution; UI modules do not infer identity from a similar title.
 
-**Project** means a saved citation graph and its reading/exclusion state, deep dives, views, and explicit
-question memberships. Transient local discovery and similarity pools must not replace its snapshot.
+**Project** means a saved citation graph and its reading/exclusion state, deep dives, and views.
+Transient similarity pools must not replace its snapshot.
 
 **View** means layout, comparison kind, distance scale, filters, selection, viewport, and collapsed
 panels. Restoration uses a silent chrome Interface so applying saved state does not simulate user
@@ -65,10 +64,10 @@ src/workflow/literature-search.ts owns OpenAlex semantic candidate retrieval, a 
 session cache over the shared response cache, shared request pacing, and research/retraction filtering. src/similarity-search.ts
 owns DOI/OpenAlex deduplication and stable Text ranking across library and literature candidates.
 The explorer coordinates pending/error/empty state, optional local text enrichment, and stale-result
-guards. Pane and embed mounting choose an explicit task independently of the layout. Similarity
+guards. Pane and embed mounting expose retrieval in the shared Similarity map, without a task selector. Similarity
 source graphs and results are transient; citation sessions and saved snapshots remain separate.
 
-ResearchLibrary supplies local holdings, text evidence, and discovery through the
+ResearchLibrary supplies local holdings, text evidence, and library papers through the
 PaperLibraryService interface. It runs the research repository's CLI and availability worker as child processes
 (src/research-tools.ts) and never loads repository modules. Without a configured research
 repository it is absent and citation exploration still works. Retrieval UI distinguishes pending,

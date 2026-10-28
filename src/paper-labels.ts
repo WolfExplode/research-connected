@@ -1,15 +1,13 @@
 import { App, Modal, Notice, Setting, TFile } from "obsidian";
-import { bookmarkOf, QUESTIONS, type ResearchLibrary } from "./research-library";
+import { bookmarkOf, type ResearchLibrary } from "./research-library";
 
 /**
  * Labels live in the paper note's frontmatter, where agents and the research CLI read them:
- * quality, reading status, bookmark and question relevance. Only changed properties are written,
+ * quality, reading status and bookmark. Only changed properties are written,
  * so an unrelated edit made while the form is open survives.
  */
 const QUALITIES = ["unassessed", "high", "mixed", "low"];
 const READING = ["unread", "skimmed", "reading", "read"];
-
-const linkTarget = (value: unknown): string => String(value).replace(/^\[\[|\]\]$/g, "").split("|")[0]!;
 
 export class PaperLabelsModal extends Modal {
 	constructor(app: App, private readonly file: TFile, private readonly saved: () => void = () => {}) { super(app); }
@@ -24,41 +22,6 @@ export class PaperLabelsModal extends Modal {
 		new Setting(this.contentEl).setName("Reading status")
 			.addDropdown(d => d.addOptions(Object.fromEntries(READING.map(v => [v, v]))).setValue(typeof props.reading_status === "string" ? props.reading_status : "unread").onChange(v => { changes.reading_status = v; }));
 		new Setting(this.contentEl).setName("Bookmark").addToggle(t => t.setValue(bookmarkOf(props)).onChange(v => { changes.bookmark = v; }));
-		const relevant = new Map(["relevant_to", "not_relevant_to"].map(key => [key, new Set(props[key] == null ? [] : [props[key]].flat().map(String))]));
-		this.contentEl.createEl("h3", { text: "Relevant to questions" });
-		this.contentEl.createEl("p", { text: "Links mark usefulness for a question. Record include/exclude decisions and reasons in the question note." });
-		const list = this.contentEl.createDiv();
-		const draw = (): void => {
-			list.empty();
-			for (const [key, links] of relevant) for (const link of links) {
-				const row = list.createDiv({ cls: "cpo-label-link" });
-				row.createSpan({ text: `${key === "relevant_to" ? "Relevant" : "Not relevant"}: ${link}` });
-				row.createEl("button", { text: "Remove" }).addEventListener("click", () => { links.delete(link); changes[key] = [...links]; draw(); });
-			}
-			if (![...relevant.values()].some(set => set.size)) list.createEl("p", { text: "No questions linked yet.", cls: "setting-item-description" });
-		};
-		draw();
-		const questions = this.app.vault.getMarkdownFiles().filter(f => f.path.startsWith(QUESTIONS)).sort((a, b) => a.basename.localeCompare(b.basename));
-		const picker = this.contentEl.createEl("select", { attr: { "aria-label": "Question" } });
-		picker.createEl("option", { value: "", text: "Choose a question…" });
-		for (const question of questions) picker.createEl("option", { value: question.path.slice(0, -3), text: question.basename });
-		const mark = (key: string): void => {
-			if (!picker.value) return;
-			for (const [field, links] of relevant) {
-				// Compare the target before an optional display alias to avoid contradictory labels.
-				for (const existing of links) {
-					const target = linkTarget(existing);
-					const resolved = this.app.metadataCache.getFirstLinkpathDest(target, this.file.path);
-					if ((resolved?.path ?? target).replace(/\.md$/i, "") === picker.value) links.delete(existing);
-				}
-				if (field === key) links.add(`[[${picker.value}]]`);
-				changes[field] = [...links];
-			}
-			draw();
-		};
-		const marks = this.contentEl.createDiv({ cls: "cpo-label-actions" });
-		marks.createEl("button", { text: "Relevant" }).addEventListener("click", () => mark("relevant_to"));
-		marks.createEl("button", { text: "Not relevant" }).addEventListener("click", () => mark("not_relevant_to"));
 		const footer = this.contentEl.createDiv({ cls: "cpo-label-actions" });
 		const save = footer.createEl("button", { text: "Save labels", cls: "mod-cta" });
 		save.addEventListener("click", () => {

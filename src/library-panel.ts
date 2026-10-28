@@ -1,7 +1,6 @@
 import { setHoverHint } from "./hover-hint";
 import { tr } from "./i18n";
 import type { PaperNode } from "./types";
-import type { DiscoveryPayload, DiscoveryRequest } from "./discovery-graph";
 import type { StoredTextEvidence } from "./paper-comparison";
 import type { DoiRecovery } from "./doi-recovery";
 
@@ -11,7 +10,7 @@ declare global {
 		"research-connected-library-changed": Event;
 		"research-connected-label-paper": CustomEvent<{ note: string }>;
 		"research-connected-theme": Event;
-		"research-connected-open-discovery": CustomEvent<{ paper?: string; question?: string; mode?: "rank" | "search" }>;
+		"research-connected-find-similar": CustomEvent<{ paper?: string }>;
 	}
 }
 
@@ -39,10 +38,8 @@ export interface PaperLibraryService {
 	textLibrary?(): Promise<Array<{ paper: PaperNode; note: string; vector?: number[] }>>;
 	embeddingStatus?(): { pending: number; state: string };
 	open(note: string): void;
-	discovery?: {
-		context(): { questions: Array<{ path: string; title: string }>; papers: Array<{ path: string; title: string }> };
-		run(request: DiscoveryRequest): Promise<DiscoveryPayload>;
-	};
+	/** Library paper notes offered as Find similar sources. */
+	libraryPapers?(): Array<{ path: string; title: string }>;
 }
 
 export interface DoiRecoveryAction {
@@ -166,14 +163,14 @@ export function paintLibraryAvailability(parent: HTMLElement, paper: PaperNode, 
 		if (note.startsWith("Research/Papers/")) {
 			const label = createEl("button", { text: tr("标注论文", "Label paper") });
 			label.type = "button";
-			setHoverHint(label, tr("质量、阅读状态、收藏和问题相关性，写入论文笔记", "Quality, reading status, bookmark and question relevance, written to the paper note"));
+			setHoverHint(label, tr("质量、阅读状态和收藏，写入论文笔记", "Quality, reading status and bookmark, written to the paper note"));
 			label.addEventListener("click", () => window.dispatchEvent(new CustomEvent("research-connected-label-paper", { detail: { note } })));
 			actions.append(label);
 		}
-		if (libraryService.discovery && note.startsWith("Research/Papers/")) {
-			const related = createEl("button", { text: tr("查找本地相关论文", "Find related local papers") });
+		if (libraryService.libraryPapers && note.startsWith("Research/Papers/")) {
+			const related = createEl("button", { text: tr("查找相似论文", "Find similar papers") });
 			related.type = "button";
-			related.addEventListener("click", () => window.dispatchEvent(new CustomEvent("research-connected-open-discovery", { detail: { paper: note } })));
+			related.addEventListener("click", () => window.dispatchEvent(new CustomEvent("research-connected-find-similar", { detail: { paper: note } })));
 			actions.append(related);
 		}
 	}

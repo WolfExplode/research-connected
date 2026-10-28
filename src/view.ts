@@ -7,7 +7,7 @@ import { obsidianGetJson, obsidianPostJson } from "./obsidian-http";
 import { openExternal } from "./open-external";
 import { createVaultNote, lookupLiteratureNote, openLiteratureNote, rememberLiteratureNote, syncLiteratureReading } from "./vault-note";
 import type { ConnectedPapersSettings } from "./settings";
-import type { ResearchProject } from "./project-state";
+import { savedGraphs, type ResearchProject } from "./project-state";
 import type { PaperLibraryService } from "./library-panel";
 
 export interface GraphHost {
@@ -56,8 +56,8 @@ export class ConnectedPapersView extends ItemView {
 		this.appHandle?.openDoiPathSearch();
 	}
 
-	openDiscovery(options: Parameters<GraphAppHandle["openDiscovery"]>[0] = {}): void {
-		this.appHandle?.openDiscovery(options);
+	openSimilar(paper?: string): void {
+		this.appHandle?.openSimilar(paper);
 	}
 
 	private mount(initialTarget?: { kind: "doi" | "openalex"; value: string }): void {
@@ -81,7 +81,7 @@ export class ConnectedPapersView extends ItemView {
 			syncLiteratureReading: (paper, reading) => syncLiteratureReading(this.app, paper, reading, this.host.getSettings().literatureDoiProperty),
 			rememberLiteratureNote,
 			paperLibrary: vaultPaperLibrary(this.app, () => this.host.getSettings(), () => this.host.researchLibrary?.() ?? null),
-			loadSavedProject: () => Object.values(this.host.getSettings().researchProjects ?? {}).filter((project) => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null,
+			loadSavedProject: () => savedGraphs(this.host.getSettings().researchProjects ?? {})[0] ?? null,
 			statusHost: this.headerStatus ?? undefined,
 		saveProject: async (project: ResearchProject) => {
 			this.host.getSettings().researchProjects[project.seedId] = project;

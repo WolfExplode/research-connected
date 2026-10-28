@@ -15,10 +15,10 @@ that repository's needs; the upstream product plan it was forked from is kept in
 
 ## Next
 
-- **Saved graphs agents can read.** Saved citation graphs, question memberships, deep dives and
-  exclusions live in `data.json`. Expose a question's graph through a CLI command, or store it as a
-  vault note the plugin reads.
-- **Search paper contents.** Move the search tab from Research Vault into the Explore menu.
+- **Saved graphs agents can read.** Saved citation graphs, deep dives and exclusions live in
+  `data.json`. Expose them through a CLI command, or store them as vault notes the plugin reads.
+- **Explore from search results.** Accept seed papers from the library's paper search (in Research
+  Vault) and open citation or similarity graphs around them.
 
 ## Later
 

@@ -2,20 +2,18 @@
 
 Research Connected's paper library runs on the research repository's command-line tools
 (`Tools/research/cli.js` in cardiology-research-library). The citation graph works without them;
-holdings, Save and Bookmark, availability, SPECTER2 vectors, discovery and labels need them.
+holdings, Save and Bookmark, availability, SPECTER2 vectors, library similarity and labels need
+them.
 
 ## Setup
 
 In settings, **Research tools repository** names the folder containing `Tools/research/cli.js`;
 empty uses the folder that contains the vault. **Node executable** runs the tools (a path, or a
 command on PATH). The setting's description reports whether the tools were found. A checkout
-without `Tools/research/discover.js` is too old and is reported as such, rather than failing per
+without `Tools/research/openalex-cache.cjs` is too old and is reported as such, rather than failing per
 action.
 
-The research CLI owns Python and model keys: ASReview and PaperQA2 environments are found under
-the repository's `.cache/research-tools/` (or `RESEARCH_ASREVIEW_PYTHON` /
-`RESEARCH_PAPERQA_PYTHON`), and a DeepSeek key in `.deepseek-key` or the environment. Research
-Connected never runs Python. Its child processes receive its OpenAlex and Semantic Scholar keys
+Research Connected never runs Python. Its child processes receive its OpenAlex and Semantic Scholar keys
 and its contact email (`RESEARCH_MAILTO`); keys flow one way.
 
 ## Process boundary
@@ -39,7 +37,7 @@ plugin orchestrates and renders. Its own vault writes are frontmatter edits thro
 bookmarks on existing notes and the **Label this paper** form, which writes only changed
 properties. Without research tools, Save and Bookmark explain what to set up and write nothing.
 
-Labels, bookmarks, reading state and question relevance live in note frontmatter, never in plugin
+Labels, bookmarks and reading state live in note frontmatter, never in plugin
 data. Plugin data holds graph projects, views, settings and credentials.
 
 ## The library service
@@ -68,35 +66,28 @@ data. Plugin data holds graph projects, views, settings and credentials.
 - **Fetched evidence.** Vectors from a graph build's Semantic Scholar batch and OpenAlex
   open-access fields are stored through `embeddings --store` and `availability --store`, so the
   CLI never downloads them a second time.
-- **Discovery.** `discovery.context()` lists questions and papers; `discovery.run()` maps a
-  request to `research discover rank|similar|index|search`. Graph generation never asks a model.
+- **Library papers.** `libraryPapers()` lists paper notes offered as Find similar sources.
+  Graph generation never asks a model.
 
 Open graphs refresh through a private `research-connected-library-changed` window event, emitted
 once per burst and only for changes they can show (DOI, files, bookmark, reading status and
 similar), not for reading-notes edits.
 
-## Explore and local results
+## Explore and similarity results
 
-The main workspace selects question notes from `discovery.context().questions`. Saved citation
-graphs carry explicit `questionPaths` memberships; old graphs start unassigned, and a graph can
-be reused by several questions. Its snapshot, views and exclusions remain shared; bookmarks belong to vault notes.
-`activeQuestion` remembers the selected note path. The main **Explore** selector switches between
-Explore citations, Find similar papers, Screen papers and Search PDFs. All use the same question
-selector, canvas, layout controls and paper details panel. Only method-specific inputs are shown.
-Changing method retains the citation graph and caches local results for the session; late tool
-responses are ignored after a context switch or disposal. Local results never enter saved citation
-snapshots, and citation-editing controls are hidden while displaying them.
+The main **Explore** selector switches between Explore citations and Find similar papers. Both use
+the same canvas, layout controls and paper details panel; only method-specific inputs are shown.
+Changing method retains the citation graph; late responses are ignored after a context switch or
+disposal. Similarity results never enter saved citation snapshots, and citation-editing controls
+are hidden while displaying them. The graph menu lists every saved citation graph, most recently
+updated first.
 
 Find similar papers compares whole-library text through `textLibrary()`; wider-literature
-retrieval uses Research Connected's own OpenAlex adapter. `research-connected-open-discovery`
-accepts `detail.paper` (preselect a source note) or `{ question, mode: "rank" | "search" }`.
-Old discovery tabs redirect there. Results use exact local identities (`local:<vault-relative path>`).
-
-Query/source membership edges contain no citation evidence. Priority, similarity and retrieval
-order remain separate signals; result-to-result relationships are not inferred. Retrieval positions
-are not converted into similarity scores. Unranked training examples, duplicate results, unsafe
-paths and zero-overlap similarity matches are omitted. Sessions do not modify saved citation
-projects, source records, observations or screening labels.
+retrieval uses Research Connected's own OpenAlex adapter. Library papers come from
+`libraryPapers()`. `research-connected-find-similar` accepts `detail.paper` to preselect a source
+note. Results use exact local identities (`local:<vault-relative path>`). Similarity results do not
+modify saved citation projects, source records or observations, and zero-overlap matches are
+omitted.
 
 Failure to query a provider must not imply that a paper cannot be obtained. Credentials must not
 appear in returned URLs or error messages. The graph only opens HTTP(S) links without embedded

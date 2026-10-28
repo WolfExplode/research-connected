@@ -76,8 +76,6 @@ async function verify(): Promise<void> {
 		check(Number(restored.value) === selectedYear && root.querySelector(".cpo-scrub-readout")?.textContent === `Through ${selectedYear}`, "restored year control must match the saved filter");
 
 		button('[data-layout="radial"]').click();
-		const method = root.querySelector<HTMLSelectElement>('[aria-label="Explore method"]')!;
-		method.value = "similar"; method.dispatchEvent(new Event("change"));
 		await until(() => root.querySelector(".cpo-status")?.textContent?.includes("temporary library failure") ?? false);
 		const retry = Array.from(root.querySelectorAll<HTMLButtonElement>(".cpo-similarity-search button")).find(item => item.textContent === "Retry library search")!;
 		check(!retry.hidden && libraryCalls === 1, "failed library retrieval must offer an inline retry");
@@ -85,7 +83,6 @@ async function verify(): Promise<void> {
 		await until(() => libraryCalls === 2 && !root.querySelector(".cpo-similarity-search")?.getAttribute("aria-busy")?.includes("true"));
 		check(retry.hidden && root.querySelector(".cpo-status")?.textContent?.includes("No comparison papers"), "retry must recover and distinguish an empty result");
 		button('[data-layout="force2d"]').click();
-		method.value = "citation"; method.dispatchEvent(new Event("change"));
 
 		for (const dark of [false, true]) {
 			root.style.setProperty("--background-primary", dark ? "#1e1e1e" : "#fff");

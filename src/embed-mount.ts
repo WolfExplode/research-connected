@@ -238,17 +238,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 	let storedTextGraph: SimilarityGraph | null = null;
 	surface.distanceScale.value = saved?.distanceScale ?? "relative";
 	let scopedActive = false;
-	let similaritySearch = false;
 	const exploreTools = createDiv({ cls: "cpo-embed-explore" }); bar.append(exploreTools);
-	const method = createEl("select"); method.setAttribute("aria-label", "Explore method");
-	method.append(createEl("option", { value: "citation", text: tr("探索引用", "Explore citations") }),
-		createEl("option", { value: "similar", text: tr("查找相似论文", "Find similar papers") }));
-	exploreTools.append(method);
-	method.addEventListener("change", () => {
-		similaritySearch = method.value === "similar"; refreshSimilarityScores();
-		const pool = similarityExplorer.result?.graph ?? currentGraph;
-		if (pool) showDetail(pool.nodes.find(paper => paper.isSeed) ?? null, pool, null);
-	});
 	const similarityExplorer = mountSimilarityExplorer(stage, library, () => {
 		if (!alive) return;
 		refreshSimilarityScores();
@@ -263,7 +253,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		literature: createLiteratureSearch(fresh => new OpenAlexClient(deps.getJson, deps.getSettings(), { fresh }), () => deps.getSettings().excludeRetracted) });
 	function refreshSimilarityScores(): void {
 		surface.apiStatus.refresh();
-		surface.diversifyResults.disabled = reload.disabled || similaritySearch || layoutMode === "radial";
+		surface.diversifyResults.disabled = reload.disabled || layoutMode === "radial";
 		surface.diversityHint.textContent = layoutMode === "radial"
 			? tr("相似度搜索直接按文本分数排序；多样化仅用于引用邻居筛选。", "Similarity search ranks directly by text score; diversity applies only to citation-neighbor selection.")
 			: tr("减少重复候选，为不同论文留出空间。更改后重新构建引用图谱。", "Reduce redundant candidates to make room for different papers. Changes rebuild the citation graph.");
@@ -271,7 +261,7 @@ export function mountEmbed(root: HTMLElement, deps: EmbedDeps): () => void {
 		setHoverHint(surface.diversifyResults.parentElement!, surface.diversityHint.textContent ?? "");
 		root.classList.toggle("is-similarity", layoutMode === "radial");
 		root.classList.toggle("is-citation-similarity", layoutMode === "radial" && similarityKind === "citations");
-		const scoped = similarityExplorer.update(currentGraph, storedText, similaritySearch, similarityKind);
+		const scoped = similarityExplorer.update(currentGraph, storedText, layoutMode === "radial", similarityKind);
 		syncInfoBar();
 		if (scoped) {
 			comparison = scoped.scores;

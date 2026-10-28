@@ -42,7 +42,6 @@ export interface ConnectedPapersSettings {
 	/** Fetch missing SPECTER2 embeddings when graphs or library similarity load. */
 	autoSpecter2: boolean;
 	researchProjects: Record<string, ResearchProject>;
-	activeQuestion?: string;
 	/** Verified DOI metadata and one-day negative lookup cache, keyed by bibliography. */
 	doiRecoveries?: Record<string, DoiRecovery>;
 }

@@ -70,9 +70,7 @@ async function verify(): Promise<void> {
 	const similarity = root.querySelector<HTMLButtonElement>('[data-layout="radial"]')!;
 	check(similarity.textContent?.includes("相似度"), "radial is presented as Similarity");
 	similarity.click();
-	check(libraryReads === 0, "changing the layout must not retrieve a different paper pool");
-	const method = root.querySelector<HTMLSelectElement>('.cpo-explore-method')!;
-	method.value = "similar"; method.dispatchEvent(new Event("change"));
+	check(Number(libraryReads) === 1, "Similarity map retrieves the shared comparison pool");
 	await new Promise(resolve => window.setTimeout(resolve, 0));
 	const scope = root.querySelector<HTMLSelectElement>('[aria-label="Similarity search scope"]')!;
 	check(scope.value === "library" && Number(libraryReads) === 1, "Text similarity defaults to a whole-library read");
@@ -92,11 +90,10 @@ async function verify(): Promise<void> {
 	check(root.querySelector(".cpo-status")?.textContent === scopeStatus, "returning to Text restores the same current-scope summary");
 	check(!root.querySelector(".cpo-similarity-search [role=status]"), "similarity controls must not duplicate the top info bar");
 	root.querySelector<HTMLButtonElement>('[data-layout="force2d"]')!.click();
-	check(root.querySelector(".cpo-status")?.textContent === scopeStatus, "changing layout preserves the search results and scope summary");
+	check(root.querySelector<HTMLElement>(".cpo-similarity-toolbar")?.hidden, "Planar shows citation neighbors without search controls");
 	similarity.click();
 	check(!root.querySelector(".cpo-similarity-list"), "Similarity has no competing permanent ranked list");
 	root.querySelector<HTMLButtonElement>('[data-layout="force2d"]')!.click();
-	method.value = "citation"; method.dispatchEvent(new Event("change"));
 	const reading = root.querySelector<HTMLSelectElement>(".cpo-paper-reading-select")!;
 	reading.value = "read";
 	reading.dispatchEvent(new Event("change"));

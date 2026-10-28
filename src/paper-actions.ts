@@ -46,7 +46,7 @@ function acquisitionMessage(reason: string): string {
 	return tr("已加入文库。", "Added to library. ") + (reasons[reason] || tr("全文暂未获取，请重试或稍后导入。", "Full text could not be obtained. Retry or import a copy later."));
 }
 
-/** Consistent, vault-owned actions shared by graph, discovery results, lists, and embeds. */
+/** Consistent, vault-owned actions shared by graph, similarity results, lists, and embeds. */
 function paintLibraryActions(card: HTMLElement, row: HTMLElement, paper: PaperNode, library: PaperLibrary): void {
 	const save = createEl("button", { cls: "cpo-paper-action cpo-paper-save" }); save.type = "button";
 	const bookmark = createEl("button", { cls: "cpo-paper-action cpo-paper-stage cpo-paper-bookmark" }); bookmark.type = "button";

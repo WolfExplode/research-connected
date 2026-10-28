@@ -30,16 +30,11 @@ placement, and heavy actions stay with their respective mounting code.
 
 ## Tasks, retrieval, and layouts
 
-The top task selector owns **Explore citations**, **Find similar papers**, **Screen papers**, and
-**Search PDFs**. Find similar papers has one source-paper field and the shared **My library /
-Wider literature / Both** scope and Show controls. Provider names belong in contextual help rather
-than task names. Legacy companion-plugin similarity results enter this same workflow.
-
-Network, Timeline, and Similarity map are presentation choices. A layout change must preserve the
-current paper set and must not initiate literature or library retrieval. Text/Citations changes
-comparison and positioning without reranking membership. Screening and PDF retrieval do not expose
-similarity distances because their ranks are not similarity scores. Embeds use the same explicit
-task selection rather than starting a new search when a radial layout is selected.
+Research Connected has one source-paper field and no explore-method selector. The Similarity map
+includes **My library / Wider literature / Both** scope and Show controls in the shared toolbar.
+Network and Timeline show citation neighbors; Similarity map retrieves and compares papers around
+the same source. Text/Citations changes comparison without reranking membership. Pane and embeds
+share these controls. Switching back to Network or Timeline restores the citation graph.
 
 Wider literature sends the source title and abstract (or a local study summary), capped at OpenAlex's
 1,500-character search limit, to OpenAlex semantic search, then reranks up to 50 returned candidates using the plugin's Text comparison. Do not label
@@ -48,9 +43,9 @@ limit; it does not expand the provider's query cap. Both deduplicates literature
 holdings by DOI/OpenAlex identity. Keep provider limits in the summary's shared hover hint.
 
 Literature results and their source graph are transient. Preserve the saved citation session when
-switching tasks and never save search results over its snapshot. Bound request frequency and session
+switching views and never save search results over its snapshot. Bound request frequency and session
 caches, share in-flight requests for the same query, retain retry actions, and reject late completions
-when the source changes, the task closes, or the surface is disposed.
+when the source changes, the comparison closes, or the surface is disposed.
 
 ## Information placement and relevance
 
@@ -70,7 +65,7 @@ or add a second task-status paragraph inside the graph controls.
 
 Priority is actionable error, active progress, explicit success, current result summary, then incidental
 notice. Explicit success and incidental notices expire after four seconds. A background result update
-must not erase a task error. Changing method, layout, comparison, question, project, or analysis tab
+must not erase a task error. Changing method, layout, comparison, project, or analysis tab
 invalidates notices from the previous context. Async work must still check its generation/context
 before publishing a message. Dispose status timers with the owning surface.
 
@@ -78,7 +73,6 @@ Keep summaries short: mode plus useful counts, rather than repeating the full se
 and year. Similarity scope counts describe the candidate pool; changing Text/Citations must not
 imply that the candidate pool changed. Show citation-loading failures only in Citations, library
 retrieval failures only while Similarity is active, and embedding diagnostics only for Text similarity.
-Local screening and PDF search must not inherit citation-workflow diagnostics.
 
 The browser maintenance suite exercises narrow containers inside a wide desktop viewport,
 pane/embed sizing, light/dark token paths, workflow failures, retries, navigation, and restoration.
@@ -87,18 +81,16 @@ actual themes in use. Browser fixtures do not substitute for the full host matri
 
 ## Paper actions and durable ownership
 
-Save and Bookmark are separate shared actions in graph details, discovery results, prior/later
+Save and Bookmark are separate shared actions in graph details, similarity results, prior/later
 cards, global bookmark cards, and embeds. Save creates or reuses a library note and explicitly
 attempts acquisition through the research tools. A failed download keeps the note and records its
 reason and attempt time; show a retry action beside that paper. Existing local full text shows
-In library and is not downloaded again. Availability checks and discovery never trigger acquisition.
+In library and is not downloaded again. Availability checks and similarity searches never trigger acquisition.
 
 Bookmark is the vault-wide `bookmark` frontmatter flag. Bookmarking a new paper creates a
 metadata-only note without downloading; removing it only clears the flag. It never deletes the
-note or files, changes reading state, or assigns question relevance. Question links organize a
-paper without creating project-specific bookmarks. The Bookmarks entry remains reachable in every
-task. Exclude continues to affect the current project; it does not delete a library paper or label
-it irrelevant to a question.
+note or files or changes reading state. The Bookmarks entry remains reachable in every
+task. Exclude continues to affect the current project; it does not delete a library paper.
 
 Human metadata, reading notes, acquisition state, and bookmarks belong in vault notes; structured
 research records remain in tool-managed sidecars. Plugin settings retain graph/project state,

@@ -90,18 +90,15 @@ export async function verifyLiterature(root: HTMLElement): Promise<void> {
 	const handle = mountGraphApp(root, { getSettings: () => settings, getJson, openExternal() {}, loadSavedProject: () => project });
 	const layout = (mode: string) => root.querySelector<HTMLButtonElement>(`[data-layout="${mode}"]`)!.click();
 	try {
-		layout("radial"); layout("temporal");
-		check(semanticCalls === 0, "layouts alone never search wider literature");
-		const method = root.querySelector<HTMLSelectElement>('[aria-label="Explore method"]')!;
-		check(Array.from(method.options).map(option => option.text).join("|") === "Explore citations|Find similar papers|Screen papers|Search PDFs", "top-level tasks have one similarity entry and no engine names");
-		method.value = "similar"; method.dispatchEvent(new Event("change"));
+		check(!root.querySelector('[aria-label="Explore method"]'), "the unified workspace has no method selector");
+		layout("radial");
 		check(root.querySelector<HTMLButtonElement>(".cpo-form .cpo-primary")?.disabled, "the same query cannot be repeatedly submitted while retrieval is pending");
 		await until(() => root.querySelector(".cpo-status")?.textContent?.includes("Compared 1") ?? false);
 		const summary = root.querySelector(".cpo-status")?.textContent;
 		check(root.querySelector(".cpo-similarity-toolbar")?.closest(".cpo-project-tools"), "similarity criteria live beside the task controls");
-		layout("force2d"); layout("radial"); layout("temporal");
+		layout("force2d"); layout("radial");
 		check(Number(semanticCalls) === 1 && root.querySelector(".cpo-status")?.textContent === summary, "layouts preserve the retrieved pool without new requests");
-		method.value = "citation"; method.dispatchEvent(new Event("change"));
+		layout("force2d");
 		check(JSON.stringify(settings.researchProjects.W1!.snapshot) === before, "transient literature results preserve the citation project snapshot");
 		check(root.querySelector<HTMLElement>(".cpo-similarity-toolbar")?.hidden, "citation exploration does not retain similarity search controls");
 	} finally { handle.destroy(); }
@@ -111,8 +108,7 @@ export async function verifyLiterature(root: HTMLElement): Promise<void> {
 		const beforeSearch = semanticCalls;
 		root.querySelector<HTMLButtonElement>('[data-layout="force2d"]')!.click();
 		check(semanticCalls === beforeSearch, "embed layouts also preserve the citation pool");
-		const method = root.querySelector<HTMLSelectElement>('[aria-label="Explore method"]')!;
-		method.value = "similar"; method.dispatchEvent(new Event("change"));
-		await until(() => semanticCalls > beforeSearch && root.querySelector(".cpo-status")?.textContent?.includes("Compared 1") === true);
+		root.querySelector<HTMLButtonElement>('[data-layout="radial"]')!.click();
+		await until(() => semanticCalls >= beforeSearch && root.querySelector(".cpo-status")?.textContent?.includes("Compared 1") === true);
 	} finally { destroy(); }
 }

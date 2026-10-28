@@ -162,7 +162,7 @@ export class ConnectedPapersSettingTab extends PluginSettingTab {
 
 		items.push({
 			name: tr("研究工具仓库", "Research tools repository"),
-			desc: tr("包含 Tools/research/cli.js 的文件夹。留空则使用库所在的上级文件夹。保存、收藏、可用性、SPECTER2 和发现功能都通过它运行；未配置时引用图谱仍可用。", "Folder containing Tools/research/cli.js. Empty uses the folder that contains this vault. Save, Bookmark, availability, SPECTER2 and discovery run through these tools; without them the citation graph still works.") + (this.store.researchToolsStatus ? ` ${this.store.researchToolsStatus()}` : ""),
+			desc: tr("包含 Tools/research/cli.js 的文件夹。留空则使用库所在的上级文件夹。保存、收藏、可用性、SPECTER2 和文库相似度都通过它运行；未配置时引用图谱仍可用。", "Folder containing Tools/research/cli.js. Empty uses the folder that contains this vault. Save, Bookmark, availability, SPECTER2 and library similarity run through these tools; without them the citation graph still works.") + (this.store.researchToolsStatus ? ` ${this.store.researchToolsStatus()}` : ""),
 			render: (setting) => {
 				setting.addText((text) => {
 					text

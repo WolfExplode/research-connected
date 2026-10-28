@@ -43,8 +43,6 @@ export async function verifyPaperLibrary(root: HTMLElement): Promise<void> {
 		bookmark().click(); await until(() => bookmark()?.getAttribute("aria-pressed") === "false");
 		check(state.note && !state.bookmark, "removing bookmark keeps the library note");
 		bookmark().click(); await until(() => state.bookmark);
-		const method = root.querySelector<HTMLSelectElement>('[aria-label="Explore method"]')!;
-		method.value = "search"; method.dispatchEvent(new Event("change"));
 		const entry = root.querySelector<HTMLButtonElement>(".cpo-library-open")!;
 		check(entry.getClientRects().length, "bookmarks are reachable outside the citation task");
 		entry.click();

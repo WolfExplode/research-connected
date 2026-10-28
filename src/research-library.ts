@@ -3,7 +3,6 @@ import { createOpenAccessQueue, type AvailabilityResults, type OpenAccessQueue }
 import type { FetchedEvidence, FetchedVector } from "./fetched-evidence";
 import { normalizeDoi } from "./paper";
 import { paperDois } from "./work-identity";
-import type { DiscoveryPayload, DiscoveryRequest } from "./discovery-graph";
 import type { LibraryAvailability, PaperLibraryService } from "./library-panel";
 import type { StoredTextEvidence } from "./paper-comparison";
 import type { AvailabilityWorker, CliResponse, ProviderRecord, ResearchTools } from "./research-tools";
@@ -11,7 +10,7 @@ import type { PaperNode } from "./types";
 
 /**
  * The paper workflows backed by the research repository: holdings, availability, Save and
- * Bookmark, SPECTER2 vectors, stored text and discovery. Every write and provider call goes
+ * Bookmark, SPECTER2 vectors and stored text. Every write and provider call goes
  * through the research CLI; this service orchestrates, caches what the CLI returned, and tells open
  * graphs when something they show has changed.
  */
@@ -30,7 +29,6 @@ export interface LibraryHost {
 export interface ResearchLibrarySettings { autoOpenAccess: boolean; autoSpecter2: boolean }
 
 export const PAPERS = "Research/Papers/";
-export const QUESTIONS = "Research/Questions/";
 const FULL_TEXT = new Set(["pdf", "xml", "html", "htm", "docx", "epub", "txt"]);
 const EMBEDDING_PAUSE = 15 * 60_000;
 
@@ -53,7 +51,6 @@ const FINGERPRINT = ["type", "title", "year", "doi", "openalex", "pdf", "fulltex
 const fingerprint = (props: Record<string, unknown> | null): string => JSON.stringify(FINGERPRINT.map(key => props?.[key] ?? null));
 
 export class ResearchLibrary implements PaperLibraryService {
-	readonly discovery: NonNullable<PaperLibraryService["discovery"]>;
 	private index: HoldingsIndex | null = null;
 	private readonly fingerprints = new Map<string, string>();
 	private readonly results: AvailabilityResults = new Map();
@@ -80,13 +77,10 @@ export class ResearchLibrary implements PaperLibraryService {
 
 	constructor(private readonly host: LibraryHost, private readonly tools: ResearchTools, private readonly settings: () => ResearchLibrarySettings, private readonly now = Date.now) {
 		this.oa = createOpenAccessQueue({ worker: () => tools.worker(), results: this.results, notify: () => this.changed(), enabled: () => settings().autoOpenAccess, now });
-		this.discovery = {
-			context: () => ({
-				questions: host.files().filter(f => f.extension === "md" && f.path.startsWith(QUESTIONS)).map(f => ({ path: f.path, title: f.basename })),
-				papers: host.files().filter(f => f.extension === "md" && f.path.startsWith(PAPERS)).map(f => ({ path: f.path, title: text(host.frontmatter(f.path)?.title) || f.basename })),
-			}),
-			run: request => this.runDiscovery(request),
-		};
+	}
+
+	libraryPapers(): Array<{ path: string; title: string }> {
+		return this.host.files().filter(f => f.extension === "md" && f.path.startsWith(PAPERS)).map(f => ({ path: f.path, title: text(this.host.frontmatter(f.path)?.title) || f.basename }));
 	}
 
 	/** The research CLI's long-lived worker, shared with the OpenAlex cache and provider pauses. */
@@ -456,31 +450,5 @@ export class ResearchLibrary implements PaperLibraryService {
 			const dois = (response.results ?? []).filter(row => row.status === "ok").map(row => row.subject!).filter(Boolean);
 			if (dois.length) { this.oa.forget(dois); this.oa.load(dois); }
 		}
-	}
-
-	private async runDiscovery(request: DiscoveryRequest): Promise<DiscoveryPayload> {
-		const question = request.question || "", paper = request.paper || "";
-		const run = async (args: string[], input = ""): Promise<DiscoveryPayload> => {
-			const response = await this.tools.json(["discover", ...args], { acceptFailure: true, input }) as CliResponse & { discovery?: DiscoveryPayload };
-			if (response.discovery) return response.discovery;
-			const first = response.results?.[0];
-			if (first?.reason === "answered") return first.data as DiscoveryPayload;
-			throw new Error(first?.detail || first?.reason || "Discovery returned no result.");
-		};
-		if (request.engine === "asreview") {
-			if (request.mode !== "rank" && request.mode !== "similar") throw new Error("Choose ASReview ranking or local similarity.");
-			if (request.mode === "rank" && !question) throw new Error("Choose a question for ASReview ranking.");
-			if (request.mode === "similar" && !paper) throw new Error("Choose a source paper for local similarity.");
-			return run(request.mode === "rank" ? ["rank", question] : ["similar", paper]);
-		}
-		if (request.engine !== "paperqa") throw new Error("Unknown discovery engine.");
-		if (!question) throw new Error("Choose a question for the PaperQA2 PDF index.");
-		if (request.action === "index") {
-			// The rows on screen become the index selection; the CLI keeps at most 12 held PDFs.
-			if (Array.isArray(request.selection)) return run(["index", question, "--selection", "-"], JSON.stringify(request.selection));
-			return run(["index", question, ...(paper ? ["--paper", paper] : [])]);
-		}
-		if (!request.query?.trim()) throw new Error("Enter PDF search words.");
-		return run(["search", question, request.query.trim()]);
 	}
 }

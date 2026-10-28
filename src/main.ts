@@ -21,7 +21,6 @@ import { migrateProjectRecords, normalizeProjects } from "./project-state";
 import { clamp } from "./visual";
 import { invalidateLiteratureIndex } from "./vault-note";
 import { ConnectedPapersView } from "./view";
-import { DiscoveryGraphView, DISCOVERY_VIEW } from "./discovery-view";
 
 export default class ConnectedPapersPlugin extends Plugin {
 	settings: ConnectedPapersSettings = { ...DEFAULT_SETTINGS };
@@ -39,8 +38,7 @@ export default class ConnectedPapersPlugin extends Plugin {
 
 		// Main-area tab. The graph pane is the product, not a sidebar card list.
 		this.registerView(VIEW_TYPE, (leaf) => new ConnectedPapersView(leaf, this));
-		this.registerView(DISCOVERY_VIEW, leaf => new DiscoveryGraphView(leaf));
-		this.addCommand({ id: "open-related-papers", name: tr("打开本地相关论文图谱", "Open local related-paper graph"), callback: () => { void this.openDiscovery(); } });
+		this.addCommand({ id: "open-related-papers", name: tr("查找相似论文", "Find similar papers"), callback: () => { void this.openSimilar(); } });
 		this.registerDomEvent(window, "research-connected-label-paper", event => { this.labelPaper(event.detail?.note); });
 		this.addCommand({ id: "check-paper-availability", name: tr("查询论文可用性（开放获取和 Sci-Hub）", "Check paper availability (OA and Sci-Hub)"), callback: () => {
 			const library = this.researchLibrary();
@@ -53,9 +51,8 @@ export default class ConnectedPapersPlugin extends Plugin {
 			if (!checking) this.labelPaper(file.path);
 			return true;
 		} });
-		this.registerDomEvent(window, "research-connected-open-discovery", event => {
-			const detail = event.detail ?? {};
-			void this.openDiscovery(detail.paper, detail.question, detail.mode).catch(error => new Notice(error instanceof Error ? error.message : "Could not open related papers"));
+		this.registerDomEvent(window, "research-connected-find-similar", event => {
+			void this.openSimilar(event.detail?.paper).catch(error => new Notice(error instanceof Error ? error.message : "Could not open similar papers"));
 		});
 
 		addIcon(LOGO_ICON, LOGO_SVG);
@@ -109,11 +106,10 @@ export default class ConnectedPapersPlugin extends Plugin {
 		return this.settings;
 	}
 
-	private async openDiscovery(paper?: string, question?: string, mode?: "rank" | "search"): Promise<void> {
+	private async openSimilar(paper?: string): Promise<void> {
 		await this.openView();
 		const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
-		if (view instanceof ConnectedPapersView) view.openDiscovery({ paper, question, mode });
-		for (const leaf of this.app.workspace.getLeavesOfType(DISCOVERY_VIEW)) leaf.detach();
+		if (view instanceof ConnectedPapersView) view.openSimilar(paper);
 	}
 
 	/** Note embeds call this to jump to the full graph pane on their seed. */
@@ -128,6 +124,8 @@ export default class ConnectedPapersPlugin extends Plugin {
 	async loadSettings(): Promise<void> {
 		const stored = (await this.loadData()) as Partial<ConnectedPapersSettings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, stored);
+		// Research questions were retired; their selection has no remaining use.
+		delete (this.settings as { activeQuestion?: unknown }).activeQuestion;
 		const maxNodes = Number(this.settings.maxNodes);
 		this.settings.maxNodes = Number.isFinite(maxNodes) ? clamp(maxNodes, 20, 300) : DEFAULT_SETTINGS.maxNodes;
 		this.settings.researchProjects = migrateProjectRecords(normalizeProjects(stored?.researchProjects));

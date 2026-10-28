@@ -64,8 +64,8 @@ export interface ResearchToolsConfig {
 /** Why the configured checkout cannot serve this plugin, or null when it can. */
 export function researchToolsProblem(repository: string): string | null {
 	if (!existsSync(join(repository, "Tools", "research", "cli.js"))) return `No research tools at ${repository}`;
-	// `discover` arrived with the interface this plugin needs; an older checkout fails every action.
-	if (!existsSync(join(repository, "Tools", "research", "discover.js"))) return `The research tools at ${repository} are too old; update that checkout`;
+	// The shared OpenAlex cache arrived with the interface this plugin needs; an older checkout fails every action.
+	if (!existsSync(join(repository, "Tools", "research", "openalex-cache.cjs"))) return `The research tools at ${repository} are too old; update that checkout`;
 	return null;
 }
 

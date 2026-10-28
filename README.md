@@ -7,8 +7,8 @@
 Research Connected is the Obsidian front end for the
 [cardiology research library](https://github.com/WolfExplode/cardiology-research-library). It began
 as a fork of [Abe-Junwei/research-connected](https://github.com/Abe-Junwei/research-connected) and now
-owns the library's paper workflows: holdings, Save and Bookmark, availability, similarity,
-discovery and labels. Those run through the library's research command-line tools; the citation
+owns the library's paper workflows: holdings, Save and Bookmark, availability, similarity and
+labels. Those run through the library's research command-line tools; the citation
 graph works without them.
 
 ![Research Connected graph pane: related papers on the left and the selected paper's relationship evidence on the right](docs/images/graph-pane.png)
@@ -22,11 +22,9 @@ graph works without them.
 - **Find similar papers.** Compare a paper with your whole library, with wider literature from
   OpenAlex semantic search, or both. Text similarity uses SPECTER2 where available, with an explicit
   word-overlap fallback.
-- **Screen and search a question.** Rank a question's unassessed papers with ASReview and search
-  selected PDFs with PaperQA2, on the same canvas and details panel.
 - **Library actions.** Save (create or reuse the library note and try to get the full text),
-  Bookmark, check open-access and Sci-Hub availability, and label quality, reading status and
-  question relevance. Everything is written to the paper note's frontmatter or by the research
+  Bookmark, check open-access and Sci-Hub availability, and label quality and reading status.
+  Everything is written to the paper note's frontmatter or by the research
   tools, never only to plugin data.
 - **Embeds.** A `research-connected` code block puts a graph in any note:
 

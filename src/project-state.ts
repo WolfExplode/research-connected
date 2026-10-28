@@ -1,5 +1,4 @@
 import { tr } from "./i18n";
-import { questionLinks } from "./question-workspace";
 import { CitationEvidenceStore, type CitationEvidence } from "./citation-evidence";
 import { shortId } from "./paper";
 import { normalizeWorkGraph } from "./graph-edit";
@@ -81,8 +80,6 @@ export interface DeepDiveBatch {
 
 export interface ResearchProject {
 	version: 1;
-	/** Explicit question memberships; old paper projects remain unassigned. */
-	questionPaths?: string[];
 	seedId: string;
 	name: string;
 	updatedAt: number;
@@ -105,6 +102,11 @@ export function savedProjectForSeed(
 	if (target.kind === "openalex" && projects[shortId(target.value)]) return projects[shortId(target.value)];
 	const matches = Object.values(projects).filter((project) => { const graph = restoreGraphSnapshot(project.snapshot); return graph && resolveWorkQuery(graph.nodes.filter((paper) => paper.isSeed), target.value) !== null; });
 	return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Saved citation graphs, most recently updated first. */
+export function savedGraphs(projects: Record<string, ResearchProject>): ResearchProject[] {
+	return Object.values(projects).filter(project => project.snapshot).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export function matchingSeedProjects(projects: Record<string, ResearchProject>, target: { kind: "doi" | "openalex"; value: string }): ResearchProject[] {
@@ -317,7 +319,6 @@ export function normalizeProjects(raw: unknown): Record<string, ResearchProject>
 		if (project.version !== 1 || (snapshot && snapshot.nodes.length > 300) || (!snapshot && Object.keys(paperStates).length === 0 && !project.deepDives?.length)) continue;
 		out[seedId.toUpperCase()] = {
 			version: 1,
-			questionPaths: questionLinks(project.questionPaths),
 			seedId: seedId.toUpperCase(),
 			name: typeof project.name === "string" ? project.name.slice(0, 120) : snapshot?.nodes.find((node) => node.isSeed)?.title || seedId,
 			updatedAt: Number.isFinite(project.updatedAt) ? Number(project.updatedAt) : Number(project.snapshot && project.snapshot.savedAt) || 0,
