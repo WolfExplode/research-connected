@@ -32,7 +32,7 @@ export function paintPaperActions(
 }
 
 
-function acquisitionMessage(reason: string): string {
+export function acquisitionMessage(reason: string): string {
 	const reasons: Record<string, string> = {
 		"no-oa-copy": tr("未找到可下载的开放获取全文。", "No downloadable open-access copy was found."),
 		paywall: tr("全文需要访问权限。", "Full text requires access."),
@@ -43,7 +43,7 @@ function acquisitionMessage(reason: string): string {
 		"download-unavailable": tr("启用 Research Vault 后可重试下载。", "Enable Research Vault to retry the download."),
 		"unsupported-location": tr("请将文献笔记归档到 Research/Papers 后重试下载。", "File this note in Research/Papers before retrying the download."),
 	};
-	return tr("已加入文库。", "Added to library. ") + (reasons[reason] || tr("全文暂未获取，请重试或稍后导入。", "Full text could not be obtained. Retry or import a copy later."));
+	return tr("全文未保存。", "Full text was not saved. ") + (reasons[reason] || tr("全文暂未获取，请重试或稍后导入。", "Full text could not be obtained. Retry or import a copy later."));
 }
 
 /** Consistent, vault-owned actions shared by graph, similarity results, lists, and embeds. */

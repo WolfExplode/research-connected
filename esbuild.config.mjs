@@ -113,6 +113,7 @@ if (prod) {
 	class Modal {}
 	class TFile {}
 	const obsidian = {
+		BasesView: class {},
 		Plugin,
 		ItemView,
 		PluginSettingTab,

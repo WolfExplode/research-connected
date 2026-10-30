@@ -55,6 +55,12 @@ export async function verifyResearchLibrary(): Promise<void> {
 		}, ["Research/Papers/Author 2020 - Exercise and autonomic recovery in children.pdf", "Research/Inbox/Unfiled 2021 - A full text before its note was imported.pdf"]);
 		const cli = tools(() => ({ results: [] }));
 		const library = track(new ResearchLibrary(notes, cli, () => settings));
+		// Explicit request cleanup delegates validation to the same offline command as automation.
+		const reconciler = tools(() => ({ results: [{ status: "ok", reason: "request-fulfilled", subject: "Held paper" }] }));
+		const requests = track(new ResearchLibrary(vault({}), reconciler, () => settings));
+		assert.equal(await requests.reconcileRequest("Research/Papers/Held paper.md"), true);
+		assert.equal(await requests.reconcileRequest("Research/Papers/Other paper.md"), false, "another fulfilled request must not suppress this paper's download");
+		assert.deepEqual(reconciler.calls.map(call => call.args), [["reconcile"], ["reconcile"]]);
 		const byDoi = library.read(paper({ doiUrl: "https://doi.org/10.1234/A" }));
 		assert.equal(byDoi.local.state, "held"); assert.equal(byDoi.local.matchedBy, "doi"); assert.equal(byDoi.local.bookmark, true); assert.equal(byDoi.local.reading, "read");
 		assert.equal(library.read(paper({ id: "https://openalex.org/W1" })).local.matchedBy, "openalex");

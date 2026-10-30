@@ -221,7 +221,7 @@ export class OpenAlexClient {
 		return { works: works.slice(0, target), duplicateWorks, rejected, rawFetched, filtered, duplicates, requests, pages, exhausted: !error && !nextCursor, error };
 	}
 
-	async worksByIds(ids: string[]): Promise<RawWork[]> {
+	async worksByIds(ids: string[], fields = DETAIL_SELECT): Promise<RawWork[]> {
 		const unique = [...new Set(ids)];
 		const all: RawWork[] = [];
 		for (let i = 0; i < unique.length; i += 80) {
@@ -230,7 +230,22 @@ export class OpenAlexClient {
 			const url = new URL(`${OPENALEX_API}/works`);
 			url.searchParams.set("filter", `openalex:${chunk.join("|")}`);
 			url.searchParams.set("per_page", String(chunk.length));
-			url.searchParams.set("select", DETAIL_SELECT);
+			url.searchParams.set("select", fields);
+			all.push(...(await this.getResults(url)));
+		}
+		return all;
+	}
+
+	/** Exact DOI batches for consumers outside the graph; same request lane and response cache. */
+	async worksByDois(dois: string[]): Promise<RawWork[]> {
+		const unique = [...new Set(dois)];
+		const all: RawWork[] = [];
+		for (let i = 0; i < unique.length; i += 50) {
+			const chunk = unique.slice(i, i + 50);
+			const url = new URL(`${OPENALEX_API}/works`);
+			url.searchParams.set("filter", `doi:${chunk.join("|")}`);
+			url.searchParams.set("per_page", String(chunk.length));
+			url.searchParams.set("select", "id,doi,cited_by_count");
 			all.push(...(await this.getResults(url)));
 		}
 		return all;

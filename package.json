@@ -16,7 +16,7 @@
 		"lint": "eslint src preview --max-warnings 0",
 		"test:browser:build": "node esbuild.config.mjs browser",
 		"test:doi-browser:build": "node esbuild.config.mjs doi-browser",
-		"test:unit": "node tests/contracts/architecture.mjs && node tests/contracts/ui-contract.mjs && node esbuild.config.mjs verify && node .cache/build/verify.cjs --offline && node tests/contracts/plugin-state.mjs && node tests/contracts/paper-library.mjs && node tests/contracts/feedback.mjs",
+		"test:unit": "node tests/contracts/architecture.mjs && node tests/contracts/ui-contract.mjs && node esbuild.config.mjs verify && node .cache/build/verify.cjs --offline && node tests/contracts/plugin-state.mjs && node tests/contracts/paper-library.mjs && node tests/contracts/paper-requests.mjs && node tests/contracts/feedback.mjs",
 		"test:browser": "node scripts/test-browser.mjs",
 		"test:live:review": "node esbuild.config.mjs live-review && node .cache/build/live-review.cjs"
 	},

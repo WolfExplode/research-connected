@@ -3968,3 +3968,8 @@ button.cpo-agg-item {
 
 /* Label paper modal: button rows. */
 .cpo-label-actions { display: flex; align-items: center; gap: var(--size-4-2); flex-wrap: wrap; margin: var(--size-4-2) 0; }
+.cpo-paper-requests { overflow: auto; }
+.cpo-paper-requests table { width: 100%; border-collapse: collapse; }
+.cpo-paper-requests th, .cpo-paper-requests td { padding: 8px 12px; border-bottom: 1px solid var(--background-modifier-border); text-align: left; vertical-align: top; }
+.cpo-paper-requests td:last-child { min-width: 170px; }
+.cpo-paper-requests [role="status"] { margin-top: 6px; color: var(--text-muted); font-size: var(--font-smallest); }

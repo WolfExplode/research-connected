@@ -1,13 +1,101 @@
 import assert from "node:assert/strict";
 import { build } from "esbuild";
 
-const bundle = await build({ entryPoints: ["src/main.ts"], bundle: true, platform: "node", format: "cjs", external: ["obsidian"], write: false, logLevel: "silent" });
+const bundle = await build({ stdin: { contents: 'export { default } from "./src/main"; export { setOpenAlexCache } from "./src/openalex";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "cjs", external: ["obsidian"], write: false, logLevel: "silent" });
 class Plugin {}
-const obsidian = { Plugin, ItemView: class {}, PluginSettingTab: class {}, MarkdownRenderChild: class {}, Modal: class {}, TFile: class {}, getLanguage: () => "en" };
+const obsidian = { Plugin, BasesView: class {}, ItemView: class {}, PluginSettingTab: class {}, MarkdownRenderChild: class {}, Modal: class {}, TFile: class {}, getLanguage: () => "en" };
 const loaded = { exports: {} };
 new Function("module", "exports", "require", bundle.outputFiles[0].text)(loaded, loaded.exports, () => obsidian);
 const PluginClass = loaded.exports.default;
 const oldWindow = globalThis.window;
+globalThis.window = { dispatchEvent() {}, setTimeout, clearTimeout };
+let citationRequests = 0;
+obsidian.requestUrl = async ({ url }) => {
+  citationRequests++;
+  const query = new URL(url);
+  assert.ok(query.searchParams.get('select').includes('cited_by_count'));
+  return { status: 200, json: { results: query.searchParams.get('filter').startsWith('doi:')
+    ? [{ id: 'https://openalex.org/W1', doi: 'https://doi.org/10.1234/test', cited_by_count: 0 }, { id: 'https://openalex.org/W3', cited_by_count: null }]
+    : [{ id: 'https://openalex.org/W2', cited_by_count: 42 }] } };
+};
+const citationPlugin = new PluginClass();
+const citationCache = new Map();
+loaded.exports.setOpenAlexCache({ read: async url => citationCache.get(url), write: async (url, body) => { citationCache.set(url, body); } });
+const citationCounts = await citationPlugin.getCitationCounts([{ doi: '10.1234/test' }, { openalex: 'https://openalex.org/W2' }]);
+assert.equal(citationRequests, 2);
+assert.deepEqual(citationCounts.map(row => row.citationCount), [0, 42]);
+assert.equal(citationCounts[0].doi, '10.1234/test');
+await citationPlugin.getCitationCounts([{ doi: '10.1234/test' }, { openalex: 'https://openalex.org/W2' }]);
+assert.equal(citationRequests, 2, 'citation lookups reuse the shared response cache');
+loaded.exports.setOpenAlexCache(null);
+
+const doiPlugin = new PluginClass();
+doiPlugin.saveData = async () => {};
+const note = new obsidian.TFile();
+const fm = { title: 'A sufficiently detailed study of resting heart rate', year: 2020, authors: ['Jane Smith'], bookmark: true };
+let noteWrites = 0, doiRequests = 0;
+let duringWrite = () => {};
+doiPlugin.app = {
+  vault: { getAbstractFileByPath: () => note },
+  metadataCache: { getFileCache: () => ({ frontmatter: structuredClone(fm) }) },
+  fileManager: { async processFrontMatter(file, update) { noteWrites++; duringWrite(); update(fm); } },
+};
+obsidian.requestUrl = async () => {
+  doiRequests++;
+  return { status: 200, json: { message: { items: [{ DOI: '10.1234/recovered', title: [fm.title], published: { 'date-parts': [[2020]] }, author: [{ family: 'Smith' }] }] } } };
+};
+const path = 'Research/Papers/Test.md';
+assert.deepEqual(await Promise.all([doiPlugin.recoverLibraryDoi(path), doiPlugin.recoverLibraryDoi(path)]), ['10.1234/recovered', '10.1234/recovered']);
+assert.equal(doiRequests, 1, 'concurrent recovery shares a request');
+assert.equal(noteWrites, 1);
+assert.equal(fm.doi, '10.1234/recovered');
+assert.equal(fm.doi_source, 'Crossref');
+assert.ok(fm.doi_verified_at);
+assert.equal(fm.bookmark, true);
+delete fm.doi;
+await doiPlugin.recoverLibraryDoi(path);
+assert.equal(doiRequests, 1, 'verified recovery is cached');
+delete fm.doi;
+duringWrite = () => { fm.doi = '10.1234/manual'; };
+assert.equal(await doiPlugin.recoverLibraryDoi(path), '10.1234/manual');
+assert.equal(fm.doi, '10.1234/manual', 'preserves an identifier entered during lookup');
+delete fm.doi;
+duringWrite = () => { fm.title = 'Changed bibliography'; };
+assert.equal(await doiPlugin.recoverLibraryDoi(path), null);
+assert.equal(fm.doi, undefined, 'does not write a stale bibliographic match');
+assert.equal(await doiPlugin.recoverLibraryDoi('Research/Papers/../../Other.md'), null);
+fm.title = 'A sufficiently detailed study without a DOI';
+duringWrite = () => {};
+const beforeMiss = noteWrites;
+obsidian.requestUrl = async ({ url }) => {
+  doiRequests++;
+  return { status: 200, json: url.includes('crossref') ? { message: { items: [] } } : { resultList: { result: [] } } };
+};
+assert.equal(await doiPlugin.recoverLibraryDoi(path), null);
+const afterMiss = doiRequests;
+assert.equal(await doiPlugin.recoverLibraryDoi(path), null);
+assert.equal(doiRequests, afterMiss, 'recent misses do not repeatedly contact providers');
+assert.equal(noteWrites, beforeMiss, 'missing DOI does not alter the note');
+fm.title = 'A sufficiently detailed study with ambiguous metadata';
+obsidian.requestUrl = async () => ({ status: 200, json: { message: { items: ['10.1234/one', '10.1234/two'].map(DOI => ({ DOI, title: [fm.title], published: { 'date-parts': [[2020]] }, author: [{ family: 'Smith' }] })) } } });
+assert.equal(await doiPlugin.recoverLibraryDoi(path), null);
+assert.equal(noteWrites, beforeMiss, 'ambiguous candidates never change the note');
+const ambiguousStatus = await doiPlugin.recoverLibraryDoiStatus(path);
+assert.equal(ambiguousStatus.state, 'ambiguous');
+assert.match(ambiguousStatus.reason, /2 DOI candidates/);
+delete fm.year;
+const missingStatus = await doiPlugin.recoverLibraryDoiStatus(path);
+assert.equal(missingStatus.state, 'skipped');
+assert.match(missingStatus.reason, /Missing note metadata: year/);
+fm.year = 2020;
+fm.title = 'Another sufficiently detailed study without a DOI';
+obsidian.requestUrl = async ({ url }) => ({ status: 200, json: url.includes('crossref') ? { message: { items: [] } } : { resultList: { result: [] } } });
+const noMatch = await doiPlugin.recoverLibraryDoiStatus(path);
+assert.equal(noMatch.state, 'not-found');
+assert.match(noMatch.reason, /could not be verified/);
+fm.title = 'A sufficiently detailed study with network failure';
+obsidian.requestUrl = async () => { throw new Error('offline'); };
+assert.equal((await doiPlugin.recoverLibraryDoiStatus(path)).state, 'failed');
 globalThis.window = { dispatchEvent() {} };
 try {
 	const plugin = new PluginClass();

@@ -64,14 +64,14 @@ export function vaultPaperLibrary(app: App, settings: () => ConnectedPapersSetti
 		read,
 		busy: paper => pending.has(key(paper)),
 		setBookmark: (paper, value) => bookmark(paper, value),
-		save(paper) {
+		save(paper, onProgress) {
 			const id = key(paper), running = downloads.get(id); if (running) return running;
 			const task = serial(paper, async () => {
 				let state = read(paper); if (state.ambiguous) throw new Error("Multiple literature notes match. Review them before saving.");
 				if (state.held) return state;
 				const host = libraryService();
 				if (!host?.save) throw new Error(noTools());
-				state = remember(paper, await host.save(paper));
+				state = remember(paper, await host.save(paper, onProgress));
 				changed(); return state;
 			});
 			downloads.set(id, task); void task.finally(() => { if (downloads.get(id) === task) downloads.delete(id); }).catch(() => {}); return task;

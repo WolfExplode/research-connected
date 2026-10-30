@@ -49,7 +49,7 @@ export interface AvailabilityWorker {
 }
 
 export interface ResearchTools {
-	json(args: string[], options?: { input?: string; acceptFailure?: boolean }): Promise<CliResponse>;
+	json(args: string[], options?: { input?: string; acceptFailure?: boolean; onProgress?: (message: string) => void }): Promise<CliResponse>;
 	worker(): AvailabilityWorker;
 	dispose(): void;
 }
@@ -73,10 +73,10 @@ export function nodeResearchTools(config: ResearchToolsConfig): ResearchTools {
 	const cli = join(config.repository, "Tools", "research", "cli.js");
 	let worker: AvailabilityWorker | null = null;
 	return {
-		json(args, { input = "", acceptFailure = false } = {}) {
+		json(args, { input = "", acceptFailure = false, onProgress } = {}) {
 			return new Promise((resolve, reject) => {
 				const child = execFile(config.node, [cli, ...args, "--vault", config.vault, "--json"], {
-					cwd: config.repository, windowsHide: true, timeout: 600_000, maxBuffer: 64 * 1024 * 1024, env: config.env(),
+					cwd: config.repository, windowsHide: true, timeout: 600_000, maxBuffer: 64 * 1024 * 1024, env: { ...config.env(), ...(onProgress ? { RESEARCH_ACQUISITION_PROGRESS: "1" } : {}) },
 				}, (error, stdout, stderr) => {
 					if (error && !acceptFailure) return reject(new Error(String(stderr || stdout || error.message).trim()));
 					try { resolve(JSON.parse(String(stdout)) as CliResponse); }
@@ -84,6 +84,14 @@ export function nodeResearchTools(config: ResearchToolsConfig): ResearchTools {
 						// A process that never started or crashed leaves no JSON; report why instead of blaming its output.
 						if (error) reject(new Error(String(stderr || error.message).trim()));
 						else reject(new Error("Research tools returned an unreadable response. Check the Node executable in Research Connected settings."));
+					}
+				});
+				let progressBuffer = "";
+				if (onProgress) child.stderr?.on("data", (chunk: Buffer) => {
+					progressBuffer += chunk.toString();
+					const lines = progressBuffer.split("\n"); progressBuffer = lines.pop() ?? "";
+					for (const line of lines) if (line.startsWith("ACQUISITION_PROGRESS ")) {
+						try { const value: unknown = JSON.parse(line.slice(21)); if (typeof value === "string") onProgress(value); } catch { /* Ignore malformed progress. */ }
 					}
 				});
 				// Always close stdin so a command that accepts piped input never waits for more.

@@ -87,7 +87,9 @@ Restricted mode must be off, or Obsidian will not load community plugins.
 5. Drag a node to move it. Drag the background to pan. Scroll to zoom. **+ / − / Fit to view** zoom and fit the map. On touch screens, pinch with two fingers to zoom. With the canvas focused, the arrow keys pan, `+` / `-` zoom, and `0` or `F` fits.
 6. Hover a node for its title. Click it for the detail sheet: title, authors, year, citation count, how it relates to the seed, a short abstract, **OpenAlex**, and **DOI** when a DOI exists.
 
-When the **Library and full text** panel has no DOI, click **Find DOI**. This sends the paper's title and available citation details to Crossref, then searches Europe PMC if Crossref has no verified match. Recovery requires the full title, a compatible year, and corroborating first-author or volume/page information. Multiple matching DOIs are shown for review without assigning one. Verified results, their source, and recent misses are saved in plugin settings; source notes are not edited. A recovered DOI immediately enables availability checks. **Retry DOI search** makes a fresh request; opening a paper does not start a DOI search. Recent misses expire after one day.
+When the **Library and full text** panel has no DOI, click **Find DOI**. This sends the paper's title and available citation details to Crossref, then searches Europe PMC if Crossref has no verified match. Recovery requires the full title, a compatible year, and corroborating first-author or volume/page information. Multiple matching DOIs are shown for review without assigning one. Verified results, their source, and recent misses are saved in plugin settings. A recovered DOI immediately enables availability checks. **Retry DOI search** makes a fresh request; opening a graph paper does not start a DOI search. Recent misses expire after one day.
+
+Research Vault's Paper search automatically requests recovery for held papers with a note and no DOI. Research Connected uses the note's title, year and authors, reuses the same recovery cache, and writes a unique verified match into the existing note's configured DOI property, with `doi_source` and `doi_verified_at`. Existing DOI values and concurrent bibliography edits are preserved. Missing or ambiguous matches leave the note unchanged. The recovered DOI is then available for citation-count lookup. Cards without a DOI display the outcome and reason, including missing metadata, ambiguous candidates, no verified match, and lookup or persistence failures. No verified match does not establish that a DOI does not exist. This also runs in the Paper search UI's Regex mode; the CLI itself remains offline for held/regex searches.
    Those links open with `window.open`. Only `https://openalex.org` and `https://doi.org` URLs are opened. The bundle does not call Electron.
 7. Chinese titles render with the interface font plus a CJK fallback stack. Controls and command names follow Obsidian's interface language.
 
@@ -175,9 +177,21 @@ Thickness is the same three steps as the graph key (weak / medium / strong), not
 
 ## Save and Bookmark
 
+For a paper queue in Obsidian Bases, select the **Paper downloads** layout. It uses the Base's
+filters, sorting, grouping and selected properties, adding a **Download / Save** button to each
+row. Each click first runs the existing offline holdings reconciliation command, clearing fulfilled
+requests when a local PDF validates and matches the paper. This also works for a stale request
+already marked as held, using **Check / clear request**. If the request is fulfilled, no DOI lookup
+or download runs. Otherwise it continues with the same acquisition action as Save. Progress disables the button; failures appear
+beside the paper and remain available to retry. Successful acquisition updates the note, so a
+queue filtered by `needs: you` removes fulfilled requests automatically.
+When a DOI is missing, the button first runs Find DOI and records a verified match before
+downloading. If no match is found, it still attempts acquisition by title. Ambiguous matches,
+lookup errors or incomplete/changed bibliography stop the action with feedback for review or retry.
+
 **Save** adds a paper to your vault library and attempts to obtain its full text. It uses the
 research tools (see [Research tools](RESEARCH_TOOLS.md)): create or reuse the source note, try
-open-access routes, validate the file, and file it beside the note. A failed attempt keeps the note
+open-access routes followed by the configured Sci-Hub provider, validate the file, and file it beside the note. A failed attempt keeps the note
 with `needs_reason`, `acquisition_status`, and `acquisition_attempted_at`; use **Retry download** or
 import a copy later. Already-held full text shows **In library**. Without research tools, Save and
 Bookmark explain what to set up and write nothing.

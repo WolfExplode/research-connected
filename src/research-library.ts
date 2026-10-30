@@ -200,14 +200,40 @@ export class ResearchLibrary implements PaperLibraryService {
 		void this.oa.prefetch(papers.flatMap(paper => paperDois(paper))).catch(() => {});
 	}
 
-	save(paper: PaperNode): Promise<LibraryAvailability> { return this.keep(paper, { download: true }); }
+	save(paper: PaperNode, onProgress?: (message: string) => void): Promise<LibraryAvailability> { return this.keep(paper, { download: true, onProgress }); }
+
+	/** Explicit offline request cleanup using the same validated-PDF check as automatic reconciliation. */
+	reconcileRequest(note: string): Promise<boolean> {
+		const task = this.writes.catch(() => {}).then(async () => {
+			const response = await this.tools.json(["reconcile"]);
+			this.index = null;
+			this.changed();
+			const subject = note.split("/").at(-1)?.replace(/\.md$/i, "");
+			return !!response.results?.some(result => result.status === "ok" && result.reason === "request-fulfilled" && result.subject === subject);
+		});
+		this.writes = task;
+		return task;
+	}
+
+	/** Records the user's decision that a wanted paper cannot be obtained; the CLI also logs it in Unobtainable.md. */
+	markUnobtainable(note: string): Promise<boolean> {
+		const task = this.writes.catch(() => {}).then(async () => {
+			const subject = note.split("/").at(-1)?.replace(/\.md$/i, "") ?? "";
+			const response = await this.tools.json(["unobtainable", subject]);
+			this.index = null;
+			this.changed();
+			return !!response.results?.some(result => result.status === "ok" && result.reason === "unobtainable");
+		});
+		this.writes = task;
+		return task;
+	}
 
 	bookmark(paper: PaperNode, value: boolean): Promise<LibraryAvailability> {
 		return this.keep(paper, { bookmark: value });
 	}
 
 	// Serialize mutations across panes and embeds; repeated acquisitions share one in-flight request.
-	private keep(paper: PaperNode, options: { download?: boolean; bookmark?: boolean }): Promise<LibraryAvailability> {
+	private keep(paper: PaperNode, options: { download?: boolean; bookmark?: boolean; onProgress?: (message: string) => void }): Promise<LibraryAvailability> {
 		const key = paperDois(paper)[0] || openAlexId(paper.openAlexUrl || paper.id) || localTitle(paper.title);
 		const running = options.download ? this.downloads.get(key) : undefined;
 		if (running) return running;
@@ -235,7 +261,7 @@ export class ResearchLibrary implements PaperLibraryService {
 			const args = ["keep", "-"];
 			if (options.download) args.push("--download");
 			if (typeof options.bookmark === "boolean") args.push(options.bookmark ? "--bookmark" : "--unbookmark");
-			const response = await this.tools.json(args, { acceptFailure: true, input: JSON.stringify(metadata) });
+			const response = await this.tools.json(args, { acceptFailure: true, input: JSON.stringify(metadata), onProgress: options.onProgress });
 			const outcome = response.results?.[0];
 			this.index = null; this.changed();
 			const data = outcome?.data as { note?: string; held?: boolean; bookmark?: boolean; reading_status?: string; reason?: string; attemptedAt?: string } | undefined;

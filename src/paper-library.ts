@@ -16,7 +16,7 @@ export interface PaperLibrary {
 	read(paper: PaperNode): LibraryPaperState;
 	busy?(paper: PaperNode): boolean;
 	setBookmark(paper: PaperNode, value: boolean): Promise<void>;
-	save(paper: PaperNode): Promise<LibraryPaperState>;
+	save(paper: PaperNode, onProgress?: (message: string) => void): Promise<LibraryPaperState>;
 	bookmarks(): LibraryBookmark[];
 	open(note: string): void;
 }

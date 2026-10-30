@@ -28,7 +28,7 @@ export interface LibraryAvailability {
  */
 export interface PaperLibraryService {
 	read(paper: PaperNode): LibraryAvailability;
-	save?(paper: PaperNode): Promise<LibraryAvailability>;
+	save?(paper: PaperNode, onProgress?: (message: string) => void): Promise<LibraryAvailability>;
 	bookmark?(paper: PaperNode, value: boolean): Promise<LibraryAvailability>;
 	check(paper: PaperNode, options: { provider?: string; local?: boolean; refresh?: boolean }): Promise<LibraryAvailability>;
 	prefetch?(papers: readonly PaperNode[]): void;
