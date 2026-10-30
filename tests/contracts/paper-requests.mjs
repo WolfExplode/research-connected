@@ -40,7 +40,7 @@ view.config = { getOrder: () => ['file.name', 'note.doi'], getDisplayName: prop 
 const entry = { file: { path: state.note, basename: 'Example' }, getValue: () => ({ toString: () => '10.1234/example' }) };
 view.data = { data: [entry], groupedData: [{ hasKey: () => false, entries: [entry] }] };
 view.onload(); view.onDataUpdated();
-assert.equal(parent.find('button')[0].textContent, 'Download / Save');
+assert.equal(parent.find('button')[0].textContent, 'Download');
 parent.find('a')[0].listeners.click({ preventDefault() {} });
 assert.equal(opened, state.note);
 parent.find('button')[0].listeners.click();
